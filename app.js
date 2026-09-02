@@ -18,6 +18,32 @@ const fmt$k = (n) => {
   if (abs >= 1000) return '$' + (n / 1000).toFixed(0) + 'k';
   return fmt$(n);
 };
+// Compact, consistent currency for CHART AXES only: $0, $500K, $1.5M, $2M,
+// $80M — at most one decimal (trailing zero trimmed), never over-precise like
+// $69.948M. Keep fmt$k (with its finer precision) for card readouts.
+const fmtAxis = (n) => {
+  if (!isFinite(n)) return '∞';
+  const abs = Math.abs(n), sign = n < 0 ? '-' : '';
+  if (abs >= 1e6) return `${sign}$${parseFloat((abs / 1e6).toFixed(1))}M`;
+  if (abs >= 1e3) return `${sign}$${parseFloat((abs / 1e3).toFixed(0))}K`;
+  return `${sign}$${Math.round(abs)}`;
+};
+// Round a value UP to a "nice" 1/2/5 × 10^n number, so axis ticks land on
+// round figures (and the plotted max never clips the top of the curve).
+const niceCeil = (x) => {
+  if (!(x > 0)) return 0;
+  const base = Math.pow(10, Math.floor(Math.log10(x)));
+  const f = x / base;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * base;
+};
+// Round y-axis over [0, rawMax]: a nice step and the smallest multiple of it
+// that covers the data. Ticks land on round figures; the top never clips.
+const niceAxis = (rawMax) => {
+  const m = Math.max(1, rawMax);
+  const yStep = niceCeil(m / 4) || 1;
+  const ySteps = Math.max(1, Math.ceil(m / yStep));
+  return { yStep, ySteps, yMax: yStep * ySteps };
+};
 const fmtYears = (n) => (isFinite(n) ? n.toFixed(0) : '∞');
 const fmtAge = (a) => (a == null ? '—' : a.toFixed(a % 1 ? 1 : 0));
 const fmtInput = (n) => Math.round(parseMoney(n)).toLocaleString('en-US');
@@ -1142,7 +1168,8 @@ function renderChart(f) {
   pess = deflateSeries(padToLength(pess, longest), inflPct);
 
   const xMin = base[0].age, xMax = base[base.length - 1].age;
-  const yMax = Math.max(1, ...opt.map((p) => p.balance), ...base.map((p) => p.balance)) * 1.05;
+  // Nice, round y-axis: clean tick labels ($20M, $40M…) and no top-of-curve clip.
+  const { yStep, ySteps, yMax } = niceAxis(Math.max(...opt.map((p) => p.balance), ...base.map((p) => p.balance)));
   const xspan = Math.max(1e-9, xMax - xMin);
 
   const X = (age) => ML + ((age - xMin) / xspan) * plotW;
@@ -1156,10 +1183,10 @@ function renderChart(f) {
 
   // Gridlines + y-axis ticks (dollar amounts).
   let grid = '', yticks = '';
-  for (let i = 0; i <= 4; i++) {
-    const val = (yMax / 4) * i, yy = Y(val);
+  for (let i = 0; i <= ySteps; i++) {
+    const val = yStep * i, yy = Y(val);
     grid += `<line class="chart-grid" x1="${ML}" y1="${yy.toFixed(1)}" x2="${W - MR}" y2="${yy.toFixed(1)}"/>`;
-    yticks += `<text class="chart-tick" x="${ML - 6}" y="${(yy + 3).toFixed(1)}" text-anchor="end">${fmt$k(val)}</text>`;
+    yticks += `<text class="chart-tick" x="${ML - 6}" y="${(yy + 3).toFixed(1)}" text-anchor="end">${fmtAxis(val)}</text>`;
   }
   // x-axis ticks (ages), roughly every 5 years.
   let xticks = '';
@@ -2323,17 +2350,17 @@ function renderGoalTimeline(f, inputs) {
   });
   const W = 800, H = 320, ML = 60, MR = 16, MT = 16, MB = 34;
   const plotW = W - ML - MR, plotH = H - MT - MB;
-  const yMax = Math.max(1, ...rows.map((r) => r.total)) * 1.05;
+  const { yStep, ySteps, yMax } = niceAxis(Math.max(...rows.map((r) => r.total)));
   const n = rows.length;
   const bw = Math.max(1, plotW / n * 0.8);
   const X = (i) => ML + (i + 0.5) * (plotW / n);
   const Y = (v) => MT + (1 - v / yMax) * plotH;
 
   let grid = '', yticks = '';
-  for (let i = 0; i <= 4; i++) {
-    const val = (yMax / 4) * i, yy = Y(val);
+  for (let i = 0; i <= ySteps; i++) {
+    const val = yStep * i, yy = Y(val);
     grid += `<line class="chart-grid" x1="${ML}" y1="${yy.toFixed(1)}" x2="${W - MR}" y2="${yy.toFixed(1)}"/>`;
-    yticks += `<text class="chart-tick" x="${ML - 6}" y="${(yy + 3).toFixed(1)}" text-anchor="end">${fmt$k(val)}</text>`;
+    yticks += `<text class="chart-tick" x="${ML - 6}" y="${(yy + 3).toFixed(1)}" text-anchor="end">${fmtAxis(val)}</text>`;
   }
   let bars = '';
   rows.forEach((r, i) => {
@@ -2800,16 +2827,16 @@ function renderScenarioChart(baseSeries, impSeries, inputs, events) {
   const plotW = W - ML - MR, plotH = H - MT - MB;
   const allAges = baseD.concat(impD);
   const xMin = Math.min(...allAges.map((p) => p.age)), xMax = Math.max(...allAges.map((p) => p.age));
-  const yMax = Math.max(1, ...allAges.map((p) => p.balance)) * 1.05;
+  const { yStep, ySteps, yMax } = niceAxis(Math.max(...allAges.map((p) => p.balance)));
   const xspan = Math.max(1e-9, xMax - xMin);
   const X = (age) => ML + ((age - xMin) / xspan) * plotW;
   const Y = (bal) => MT + (1 - Math.max(0, bal) / yMax) * plotH;
   const path = (pts) => pts.map((p, i) => `${i ? 'L' : 'M'}${X(p.age).toFixed(1)},${Y(p.balance).toFixed(1)}`).join(' ');
   let grid = '', yticks = '';
-  for (let i = 0; i <= 4; i++) {
-    const val = (yMax / 4) * i, yy = Y(val);
+  for (let i = 0; i <= ySteps; i++) {
+    const val = yStep * i, yy = Y(val);
     grid += `<line class="chart-grid" x1="${ML}" y1="${yy.toFixed(1)}" x2="${W - MR}" y2="${yy.toFixed(1)}"/>`;
-    yticks += `<text class="chart-tick" x="${ML - 6}" y="${(yy + 3).toFixed(1)}" text-anchor="end">${fmt$k(val)}</text>`;
+    yticks += `<text class="chart-tick" x="${ML - 6}" y="${(yy + 3).toFixed(1)}" text-anchor="end">${fmtAxis(val)}</text>`;
   }
   let xticks = '';
   const step = Math.max(1, Math.round((xMax - xMin) / 6 / 5) * 5);
@@ -3038,16 +3065,16 @@ function renderDebtChart(stdSchedule, accSchedule) {
   const W = 760, H = 300, ML = 64, MR = 16, MT = 14, MB = 28;
   const plotW = W - ML - MR, plotH = H - MT - MB;
   const maxMonths = Math.max(stdSchedule.length, accSchedule.length) - 1;
-  const yMax = Math.max(stdSchedule[0].balance, 1) * 1.02;
+  const { yStep, ySteps, yMax } = niceAxis(stdSchedule[0].balance);
   const X = (mi) => ML + (mi / Math.max(1, maxMonths)) * plotW;
   const Y = (b) => MT + (1 - b / yMax) * plotH;
   const path = (s) => s.map((p, i) => `${i ? 'L' : 'M'}${X(p.monthIndex).toFixed(1)},${Y(p.balance).toFixed(1)}`).join(' ');
 
   let grid = '', yticks = '';
-  for (let i = 0; i <= 4; i++) {
-    const val = (yMax / 4) * i, yy = Y(val);
+  for (let i = 0; i <= ySteps; i++) {
+    const val = yStep * i, yy = Y(val);
     grid += `<line class="chart-grid" x1="${ML}" y1="${yy.toFixed(1)}" x2="${W - MR}" y2="${yy.toFixed(1)}"/>`;
-    yticks += `<text class="chart-tick" x="${ML - 6}" y="${(yy + 3).toFixed(1)}" text-anchor="end">${fmt$k(val)}</text>`;
+    yticks += `<text class="chart-tick" x="${ML - 6}" y="${(yy + 3).toFixed(1)}" text-anchor="end">${fmtAxis(val)}</text>`;
   }
   let xticks = '';
   const maxYears = maxMonths / 12;
