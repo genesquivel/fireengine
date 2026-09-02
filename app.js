@@ -121,6 +121,18 @@ function syncHealthcareFromGoal() {
   $('healthcare').value = $('goalHealthcareManual').value;
 }
 
+// Timeline's "Annual retirement spending" is a read-only mirror of Your
+// Target's spending (its category/tier budget, blended across any phases) —
+// same pattern as household/age/SS/Lean/Fat/healthcare above. Editing spending
+// happens only in Your Target; this keeps the visible number in step.
+function syncDesiredFromGoal() {
+  const field = $('desired');
+  if (!field || document.activeElement === field) return;
+  const phases = goalPhases();
+  if (!phases.length) return; // nothing mapped yet — leave the field as-is
+  field.value = fmtInput(blendedDesiredIncome(phases));
+}
+
 function buildInputs() {
   const { isCouple, ageA, retA, ssA, ageB, retB, ssB } = activeHouseholdInputs();
 
@@ -176,13 +188,15 @@ function buildInputs() {
   const retAge = youngestAge + yearsToRetirement;
   const pen = earlyPenaltyContext(retAge, yearsToRetirement, baseReturn);
 
-  // --- v2: spending phases (Goal Builder). They drive the drawdown's per-year
-  // spending CURVE (e.g. front-loaded Go-Go spend tapering down) whenever any are
-  // defined. They do NOT auto-overwrite "Desired household income" — use the
-  // "Pull from Goal Builder" buttons to copy the blended figure in deliberately.
+  // --- Spending phases (Your Target). They drive the drawdown's per-year
+  // spending CURVE (e.g. front-loaded Go-Go spend tapering down) whenever any
+  // are defined. Your Target is also the SINGLE SOURCE OF TRUTH for the headline
+  // retirement-spending figure: the duration-weighted blend of those phases
+  // flows automatically into Timeline and What-If (no manual "pull" step). Only
+  // if the user has cleared every phase do we fall back to the raw field.
   const phases = goalPhases();
   const phasesOn = phases.length > 0;
-  const desiredAnnualIncome = num('desired');
+  const desiredAnnualIncome = phasesOn ? Math.round(blendedDesiredIncome(phases)) : num('desired');
 
   // --- v2: healthcare. ACA estimate (Goal Builder) feeds pre-65 cost when a MAGI
   // is set; otherwise the manual fallback is Goal Builder's own field — NOT
@@ -592,8 +606,14 @@ function phaseDefaults() {
   // when that field isn't in the DOM yet.
   const retAge = ($('goalRetA') ? num('goalRetA') : num('retA')) || 65;
   const years = Math.max(10, Math.round(PHASE_PLANNING_AGE - retAge));
+  // Seed the default phase from the Base category budget (COL-adjusted) so a
+  // fresh plan is internally consistent: what Your Target shows IS what Timeline
+  // uses. Falls back to a flat figure only if the category helpers aren't ready.
+  const baseSpend = (typeof colAdjustedCategories === 'function' && typeof SPEND_TIER_BASE !== 'undefined' && SPEND_TIER_BASE.base)
+    ? Math.round(Object.values(colAdjustedCategories(SPEND_TIER_BASE.base)).reduce((s, v) => s + v, 0))
+    : 80000;
   return [
-    { name: 'Retirement spending', annualSpend: 80000, years,
+    { name: 'Retirement spending', annualSpend: baseSpend, years,
       info: `Your overall yearly retirement budget, planned through age ${PHASE_PLANNING_AGE}. Spending often changes with age — add more phases (e.g. an active "Go-Go" decade, then slower years) to model that.` },
   ];
 }
@@ -1955,6 +1975,7 @@ function recompute() {
   refreshLocation();
   syncLeanFatFromGoal();
   syncHealthcareFromGoal();
+  syncDesiredFromGoal();
   updateSliderLabels();
   const inputs = buildInputs();
   const f = forecast(inputs);
@@ -4041,7 +4062,13 @@ function wizFinish() {
   incomeStreams = [];
   debtLumpSums = [];      // v2 cleanup-on-finish
   scenarioEvents = [];    // v2 cleanup-on-finish
-  spendingPhases = phaseDefaults().map(makePhase); // v2.1: reset Goal Builder phases to defaults
+  // Your Target owns retirement spending. If the quick-setup user stated a
+  // number, seed ONE spending phase with it so that stated figure is the single
+  // source of truth the whole app reads from; otherwise use the default phases.
+  const wizSpend = wizRawNum('wizDesired') || 0;
+  spendingPhases = wizSpend > 0
+    ? [makePhase({ name: 'Retirement spending', annualSpend: wizSpend, years: phaseDefaults()[0].years, info: phaseDefaults()[0].info })]
+    : phaseDefaults().map(makePhase);
   vehicleItems = [];      // v2.1 cleanup-on-finish
   supportItems = [];      // v2.1 cleanup-on-finish
   kids529Items = [];      // v2.1 cleanup-on-finish
