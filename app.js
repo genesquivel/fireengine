@@ -1287,7 +1287,7 @@ function renderFire(m) {
   // just the milestones-grid/chart presentation.
   const items = [
     ['Lean FIRE', m.lean, 'Frugal spending covered (25× lean spend).'],
-    ['Coast FIRE', m.coast, `Once you hit Coast, current savings compound to your Full FIRE number with no further contributions. Shown two ways: to your own retirement age (${m.coast.targetRetirementAge}) and to the classic age ${m.coast.classic.targetRetirementAge}.`],
+    ['Coast FIRE', m.coast, 'The point where your invested balance grows into your FIRE target on its own — contributions become optional.'],
     ['Full FIRE', m.full, 'Your portfolio alone fully covers your target lifestyle.'],
     ['Fat FIRE', m.fat, 'Elevated/luxury lifestyle fully funded.'],
   ];
@@ -1295,35 +1295,16 @@ function renderFire(m) {
   $('fireGrid').innerHTML = items.map(([name, ms, desc]) => {
     let hit, status, extra = '';
     if (name === 'Coast FIRE') {
+      // Concise status only — the full Coast FIRE experience (number today,
+      // projected age, no-contributions outcome, coast path) has its own panel
+      // right below this grid.
       hit = ms.reached;
-      // Two readouts: coast to the user's OWN retirement age, and the classic
-      // coast to 65. The classic figure usually lands earlier (longer runway).
-      const line = (label, targetAge, coastAge, reached, reachedAge) => {
-        if (reached) {
-          return `<strong>Coast to ${targetAge}:</strong> reached — you could stop contributing now (coasts to goal by ${fmtAge(reachedAge)})`;
-        }
-        if (coastAge != null) {
-          return `<strong>Coast to ${targetAge}:</strong> hit around age <strong>${fmtAge(coastAge)}</strong>, then contributions optional`;
-        }
-        return `<strong>Coast to ${targetAge}:</strong> not yet on this plan — keep contributing and it comes into range`;
-      };
-      const own = line(`your age ${ms.targetRetirementAge}`, ms.targetRetirementAge, ms.coastAge, ms.reached, ms.ageReached);
-      const cl = ms.classic;
-      const classic = line(`65 (classic)`, cl.targetRetirementAge, cl.coastAge, cl.reached, cl.ageReached);
-      // Coast FIRE number today: the balance needed right now to coast (no more
-      // contributions) to the Full FIRE target by the chosen retirement age,
-      // discounted at the REAL return. Show current-vs-required with a gap.
-      const bal = ms.currentBalance || 0, need = ms.numberToday || 0;
-      const gap = Math.max(0, need - bal);
-      const todayLine = bal >= need
-        ? `<strong>Coast FIRE number today (retire at ${ms.targetRetirementAge}):</strong> ${fmt$k(need)} — reached, you have ${fmt$k(bal)}.`
-        : `<strong>Coast FIRE number today (retire at ${ms.targetRetirementAge}):</strong> ${fmt$k(need)} — you're ${fmt$k(gap)} away.`;
-      // When the plan's own retirement age is already ≥ 65 the two collapse to
-      // the same thing — show one line rather than a confusing duplicate.
-      const ageLines = (ms.targetRetirementAge >= cl.targetRetirementAge)
-        ? own
-        : `${own}<br>${classic}`;
-      status = `${todayLine}<br>${ageLines}`;
+      status = ms.reached
+        ? 'Reached — contributions optional now'
+        : (ms.coastAge != null
+            ? `Projected around age <strong>${fmtAge(ms.coastAge)}</strong> for retirement at ${fmtAge(ms.targetRetirementAge)}`
+            : 'Not yet on this plan — keep contributing');
+      status += ' · <span class="coast-see">full detail below ↓</span>';
     } else {
       hit = ms.reachedByRetirement;
       status = ms.ageHit != null
@@ -1352,6 +1333,138 @@ function renderFire(m) {
       </div>
     </div>`;
   }).join('');
+}
+
+// Personalized age rows for the Coast FIRE path: current age, sensible 5-year
+// intervals, the projected Coast age, and the target retirement age. Deduped,
+// sorted, and clamped to [currentAge, retAge].
+function coastPathAges(currentAge, retAge, coastAge) {
+  const set = new Set();
+  const c = Math.round(currentAge), r = Math.round(retAge);
+  set.add(c);
+  for (let a = Math.ceil(c / 5) * 5; a < r; a += 5) set.add(a);
+  if (coastAge != null && coastAge > c && coastAge < r) set.add(Math.round(coastAge));
+  set.add(r);
+  return [...set].filter((a) => a >= c && a <= r).sort((x, y) => x - y);
+}
+
+// The full Coast FIRE experience: (1) Coast FIRE number today with a progress
+// bar, (2) projected Coast FIRE age, (3) the no-more-contributions outcome, and
+// (4) a personalized coast path. All figures are today's dollars at the real
+// return (calc surfaces numberToday / noContribBalanceAtRetirement / coastAge).
+function renderCoast(f, inputs) {
+  const el = $('coastFire');
+  if (!el) return;
+  const c = f.milestones.coast;
+  const target = f.fullFire;
+  const currentAge = inputs.youngestAge;
+  const retAge = c.targetRetirementAge;
+  const bal = c.currentBalance || 0;
+  const contrib = inputs.householdAnnual || 0;
+  const need = c.numberToday || 0;
+  const realR = c.coastReturn;
+
+  if (!(target > 0)) {
+    el.innerHTML = `<p class="coast-empty">Set your retirement spending in <a href="#" class="edit-in-goal-link" data-jump-tab="goal">Your Target</a> to calculate Coast FIRE.</p>`;
+    return;
+  }
+  const noInputs = bal <= 0 && contrib <= 0;
+
+  // ---- 1. Coast FIRE number today ----------------------------------------
+  const reachedToday = bal >= need && need > 0;
+  const pctRaw = need > 0 ? (bal / need) * 100 : 0;
+  const pctFill = Math.max(0, Math.min(100, pctRaw));
+  const gapToday = Math.abs(need - bal);
+  const answer1 = `
+    <div class="coast-answer">
+      <div class="coast-answer-head">
+        <span class="coast-label">Coast FIRE number today for retirement at ${fmtAge(retAge)}</span>
+        <span class="chip ${reachedToday ? 'chip-good' : 'chip-warn'}">${reachedToday ? '✓ Reached' : `${fmt$k(gapToday)} to go`}</span>
+      </div>
+      <p class="coast-sentence">You need <strong>${fmt$k(need)}</strong> invested today for it to grow to your FIRE target by age ${fmtAge(retAge)}, assuming no additional contributions.</p>
+      <div class="coast-bar" role="img" aria-label="Current invested ${fmt$k(bal)} of Coast FIRE number ${fmt$k(need)}, ${Math.round(pctRaw)} percent">
+        <div class="coast-bar-fill" style="width:${pctFill.toFixed(1)}%"></div>
+      </div>
+      <div class="coast-bar-legend">
+        <span>Invested now: <strong>${fmt$k(bal)}</strong></span>
+        <span>${Math.round(pctRaw)}% of ${fmt$k(need)}</span>
+      </div>
+      <p class="coast-help">${reachedToday
+        ? `You have reached Coast FIRE for age ${fmtAge(retAge)}.`
+        : `You are ${fmt$k(gapToday)} away from Coast FIRE for age ${fmtAge(retAge)}.`} Assumes no new contributions from today through retirement.</p>
+    </div>`;
+
+  // ---- 2. Projected Coast FIRE age ---------------------------------------
+  let answer2Body;
+  if (noInputs) {
+    answer2Body = `<p class="coast-sentence coast-muted">Add balances and contributions to calculate your projected Coast FIRE age.</p>`;
+  } else if (c.coastAge != null && c.coastAge <= currentAge) {
+    answer2Body = `<p class="coast-sentence">You have already reached Coast FIRE for retirement at age ${fmtAge(retAge)}.</p>`;
+  } else if (c.coastAge != null) {
+    answer2Body = `<p class="coast-sentence">At your current savings rate, you are projected to reach Coast FIRE at age <strong>${fmtAge(c.coastAge)}</strong>. At that point, you could stop contributing and the invested balance would still be projected to reach your FIRE target by age ${fmtAge(retAge)}.</p>`;
+  } else {
+    answer2Body = `<p class="coast-sentence">You are not projected to reach Coast FIRE before age ${fmtAge(retAge)} under the current assumptions.</p>`;
+  }
+  const answer2 = `
+    <div class="coast-answer">
+      <div class="coast-answer-head"><span class="coast-label">Projected Coast FIRE age</span></div>
+      ${answer2Body}
+      <p class="coast-help">This is the age contributions could become optional in the model.</p>
+    </div>`;
+
+  // ---- 3. If you stopped contributing today ------------------------------
+  const endBal = c.noContribBalanceAtRetirement || 0;
+  const diff = endBal - target;
+  const answer3 = `
+    <div class="coast-answer">
+      <div class="coast-answer-head"><span class="coast-label">If you stopped contributing today</span></div>
+      <p class="coast-sentence">Your current balance alone is projected to reach <strong>${fmt$k(endBal)}</strong> by age ${fmtAge(retAge)}, leaving a <span class="${diff >= 0 ? 'coast-pos' : 'coast-neg'}">${diff >= 0 ? `${fmt$k(diff)} surplus` : `${fmt$k(-diff)} gap`}</span> versus your FIRE target of ${fmt$k(target)}.</p>
+      <p class="coast-help">Contributions are set to $0; investment growth continues.</p>
+    </div>`;
+
+  // ---- 4. Coast path table -----------------------------------------------
+  let pathTable = '';
+  if (!noInputs) {
+    const ages = coastPathAges(currentAge, retAge, c.coastAge);
+    const rows = coastPath(bal, contrib, currentAge, retAge, realR, target, ages);
+    // Status is anchored to the canonical projected Coast age (a monthly-
+    // compounded figure) so the table agrees with the headline, rather than to
+    // the annually-discounted "required" column, which can differ by a hair.
+    const coastAgeR = c.coastAge != null ? Math.round(c.coastAge) : null;
+    const statusChip = (row) => {
+      if (coastAgeR == null || row.age < coastAgeR) return '<span class="chip chip-warn">Short</span>';
+      return row.age > coastAgeR
+        ? '<span class="chip chip-good">Ahead</span>'
+        : '<span class="chip chip-good">Reached</span>';
+    };
+    const labelAge = (a) => {
+      const tags = [];
+      if (Math.round(a) === Math.round(currentAge)) tags.push('now');
+      if (c.coastAge != null && Math.round(a) === Math.round(c.coastAge)) tags.push('coast');
+      if (Math.round(a) === Math.round(retAge)) tags.push('retire');
+      return `${fmtAge(a)}${tags.length ? ` <span class="coast-agetag">${tags.join(' · ')}</span>` : ''}`;
+    };
+    pathTable = `
+      <div class="coast-path">
+        <div class="coast-answer-head"><span class="coast-label">Your Coast FIRE path</span></div>
+        <div class="coast-table-wrap">
+          <table class="coast-table">
+            <thead><tr><th>Age</th><th>Projected balance</th><th>Required to coast</th><th>Status</th></tr></thead>
+            <tbody>
+              ${rows.map((row) => `<tr>
+                <td>${labelAge(row.age)}</td>
+                <td>${fmt$k(row.projected)}</td>
+                <td>${fmt$k(row.required)}</td>
+                <td>${statusChip(row)}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+        <p class="coast-help">The required Coast balance rises as retirement gets closer because there is less time to compound. “Projected” includes contributions up to that age; “required” is the balance needed at that age to stop contributing and still reach your FIRE target by retirement.</p>
+      </div>`;
+  }
+
+  el.innerHTML = answer1 + answer2 + answer3 + pathTable;
 }
 
 // Year-by-year projection table (item 3): age, balance, assumption range, and
@@ -1954,6 +2067,9 @@ function scenarioEffectiveRetirementAge() {
 function syncScenarioRetirementAgeField() {
   const field = $('scenarioRetirementAge');
   if (!field || document.activeElement === field) return;
+  // Only reflect an age while the retirement-age lever is engaged; otherwise the
+  // field stays blank (its "—" placeholder) as an unused overlay.
+  if ($('lvRetOn') && !$('lvRetOn').checked) { field.value = ''; return; }
   const age = scenarioEffectiveRetirementAge();
   field.value = isFinite(age) && age > 0 ? Math.round(age) : '';
 }
@@ -1986,6 +2102,7 @@ function recompute() {
   renderProjectionTable(f);
   renderBalances(f);
   renderFire(f.milestones);
+  renderCoast(f, inputs);
   renderAudit(f, inputs);
   renderForecastFireBreakdown(f, inputs);
   updatePullGoalButtons();
@@ -2957,8 +3074,114 @@ function renderScenarioSummary(baseline, impacted, inputs) {
   ].map(([t, v, s, calc]) => `<div class="card"><div class="ctitle">${t} ${infoTip(calc)}</div><div class="cval">${v}</div><div class="csub">${s}</div></div>`).join('');
 }
 
+// --- What-If levers: temporary overlays on the saved base plan --------------
+function leverBaseValue(inp, base) {
+  switch (inp) {
+    case 'scenarioRetirementAge': return Math.round(base.youngestAge + base.yearsToRetirement);
+    case 'lvSpend': return Math.round(base.desiredAnnualIncome);
+    case 'lvCon': return Math.round(base.householdAnnual);
+    case 'lvRetn': return base.baseReturn;
+    case 'lvInfl': return base.baseInflation;
+    case 'lvWr': return base.withdrawalRate;
+    default: return 0;
+  }
+}
+function onLeverToggle(cb, inp) {
+  const on = $(cb) && $(cb).checked, el = $(inp);
+  if (!el) return;
+  el.disabled = !on;
+  if (on) {
+    if (el.value === '' || el.value == null) {
+      const v = leverBaseValue(inp, buildInputs());
+      el.value = el.hasAttribute('data-money') ? fmtInput(v) : v;
+    }
+    if (inp === 'scenarioRetirementAge') applyScenarioRetirementAge();
+  } else {
+    el.value = '';
+    if (inp === 'scenarioRetirementAge') scenarioRetirementAge = null;
+  }
+}
+// Read the enabled levers into engine overrides + a description for the summary.
+function readWhatIfLevers(base) {
+  const overrides = {}, active = [];
+  const on = (id) => $(id) && $(id).checked;
+  if (on('lvRetOn') && $('scenarioRetirementAge') && $('scenarioRetirementAge').value !== '') {
+    const ra = Math.round(num('scenarioRetirementAge'));
+    if (ra > base.youngestAge) {
+      overrides.yearsToRetirement = ra - base.youngestAge;
+      active.push({ label: 'retirement age', base: Math.round(base.youngestAge + base.yearsToRetirement), scen: ra });
+    }
+  }
+  if (on('lvSpendOn')) { const v = num('lvSpend'); overrides.desiredAnnualIncome = v; active.push({ label: 'annual spending', base: base.desiredAnnualIncome, scen: v, money: true }); }
+  if (on('lvConOn')) { const v = num('lvCon'); overrides.householdAnnual = v; active.push({ label: 'annual contributions', base: base.householdAnnual, scen: v, money: true }); }
+  if (on('lvRetnOn')) { const v = num('lvRetn'); overrides.baseReturn = v; active.push({ label: 'base return', base: base.baseReturn, scen: v, pct: true }); }
+  if (on('lvInflOn')) { const v = num('lvInfl'); overrides.baseInflation = v; active.push({ label: 'inflation', base: base.baseInflation, scen: v, pct: true }); }
+  if (on('lvWrOn')) { const v = num('lvWr'); overrides.withdrawalRate = v; active.push({ label: 'withdrawal rate', base: base.withdrawalRate, scen: v, pct: true }); }
+  return { overrides, active };
+}
+function whatIfChangeChip(delta, betterWhenNegative, text) {
+  if (delta == null || !isFinite(delta) || delta === 0) return '<span class="chip">no change</span>';
+  const improved = betterWhenNegative ? delta < 0 : delta > 0;
+  const icon = delta < 0 ? '▼' : '▲';
+  return `<span class="chip ${improved ? 'chip-good' : 'chip-bad'}">${icon} ${text}</span>`;
+}
+function whatIfAgeChange(b, s, unit) {
+  if (b == null && s == null) return '<span class="chip">no change</span>';
+  if (b == null && s != null) return '<span class="chip chip-good">▼ now reachable</span>';
+  if (b != null && s == null) return '<span class="chip chip-bad">▲ out of reach</span>';
+  const d = s - b;
+  if (Math.abs(d) < 0.05) return '<span class="chip">no change</span>';
+  return whatIfChangeChip(d, true, `${Math.abs(d).toFixed(1)} ${unit}${Math.abs(d) >= 2 ? 's' : ''} ${d < 0 ? 'earlier' : 'later'}`);
+}
+function whatIfMoneyChange(b, s, betterWhenNegative) {
+  const d = s - b;
+  if (Math.round(d) === 0) return '<span class="chip">no change</span>';
+  return whatIfChangeChip(d, betterWhenNegative, `${d < 0 ? '−' : '+'}${fmt$k(Math.abs(d))}`);
+}
+function whatIfSummary(active, baseFireAge, scenFireAge) {
+  if (!active.length) return 'Turn on a lever above to compare a scenario against your base plan — nothing here changes Your Target.';
+  const parts = active.map((a) => {
+    const fmtV = (v) => a.money ? fmt$k(v) : a.pct ? `${(+v).toFixed(1)}%` : v;
+    return `${a.label} ${fmtV(a.base)} → ${fmtV(a.scen)}`;
+  });
+  let effect;
+  if (baseFireAge == null && scenFireAge == null) effect = 'still does not reach Full FIRE by your retirement age in either case';
+  else if (baseFireAge == null) effect = `puts Full FIRE in reach by age ${fmtAge(scenFireAge)}`;
+  else if (scenFireAge == null) effect = 'pushes Full FIRE out of reach by your retirement age';
+  else if (Math.abs(scenFireAge - baseFireAge) < 0.05) effect = `leaves your projected FIRE age at ${fmtAge(baseFireAge)}`;
+  else effect = `moves your projected FIRE age from ${fmtAge(baseFireAge)} to ${fmtAge(scenFireAge)}`;
+  return `Changing ${parts.join(', ')} ${effect}.`;
+}
+function renderWhatIfComparison() {
+  const el = $('whatifCompare');
+  if (!el) return;
+  const base = buildInputs();
+  const { overrides, active } = readWhatIfLevers(base);
+  const scen = Object.assign({}, base, overrides);
+  const bf = forecast(base), sf = forecast(scen);
+  const fireAge = (fc) => (fc.milestones.full.ageHit != null ? fc.milestones.full.ageHit : null);
+  const coastAge = (fc) => fc.milestones.coast.coastAge;
+  const ageTxt = (a) => (a == null ? 'Not by retirement' : `Age ${fmtAge(a)}`);
+  const gapTxt = (g) => (g >= 0 ? `${fmt$k(g)} surplus` : `${fmt$k(-g)} short`);
+  const row = (label, b, s, change) =>
+    `<div class="cmp-row"><span class="cmp-label">${label}</span><span class="cmp-cell">${b}</span><span class="cmp-cell">${s}</span><span class="cmp-cell cmp-change">${change}</span></div>`;
+  const rows = [
+    row('Projected FIRE age', ageTxt(fireAge(bf)), ageTxt(fireAge(sf)), whatIfAgeChange(fireAge(bf), fireAge(sf), 'yr')),
+    row('Your FIRE target', fmt$k(bf.fullFire), fmt$k(sf.fullFire), whatIfMoneyChange(bf.fullFire, sf.fullFire, true)),
+    row('Coast FIRE age', ageTxt(coastAge(bf)), ageTxt(coastAge(sf)), whatIfAgeChange(coastAge(bf), coastAge(sf), 'yr')),
+    row('Retirement gap', gapTxt(bf.base.gap), gapTxt(sf.base.gap), whatIfMoneyChange(bf.base.gap, sf.base.gap, false)),
+  ].join('');
+  el.innerHTML = `
+    <div class="cmp-table">
+      <div class="cmp-row cmp-head"><span class="cmp-label"></span><span class="cmp-cell">Base</span><span class="cmp-cell">Scenario</span><span class="cmp-cell">Change</span></div>
+      ${rows}
+    </div>
+    <p class="cmp-summary">${whatIfSummary(active, fireAge(bf), fireAge(sf))}</p>`;
+}
+
 function renderScenarioPlayground() {
   if (!$('scenarioChart')) return;
+  renderWhatIfComparison();
   const base = buildInputs();
   // Apply the scenario-local retirement-age what-if to a COPY only. Both
   // forecast() and forecastWithEvents() derive retirement age purely from
@@ -3757,6 +3980,19 @@ if ($('scenarioRetirementAge')) {
   $('scenarioRetirementAge').addEventListener('change', (e) => { syncScenarioRetirementAgeField(); e.stopPropagation(); });
 }
 
+// What-If lever toggles: enable/prefill the paired input, then recompute.
+const WHATIF_LEVERS = [['lvRetOn', 'scenarioRetirementAge'], ['lvSpendOn', 'lvSpend'], ['lvConOn', 'lvCon'], ['lvRetnOn', 'lvRetn'], ['lvInflOn', 'lvInfl'], ['lvWrOn', 'lvWr']];
+WHATIF_LEVERS.forEach(([cb, inp]) => {
+  if ($(cb)) $(cb).addEventListener('change', () => { onLeverToggle(cb, inp); recompute(); refreshActiveTab(); saveState(); });
+});
+if ($('resetLeversBtn')) $('resetLeversBtn').addEventListener('click', () => {
+  WHATIF_LEVERS.forEach(([cb, inp]) => { if ($(cb)) $(cb).checked = false; if ($(inp)) { $(inp).value = ''; $(inp).disabled = true; } });
+  scenarioRetirementAge = null;
+  recompute(); refreshActiveTab(); saveState();
+});
+// On load, engage the retirement-age lever if a saved override exists.
+if ($('lvRetOn') && scenarioRetirementAge != null) { $('lvRetOn').checked = true; if ($('scenarioRetirementAge')) $('scenarioRetirementAge').disabled = false; }
+
 // v2: money formatter — accept commas while preserving numeric calculations.
 document.addEventListener('blur', (e) => {
   const t = e.target;
@@ -3770,24 +4006,23 @@ document.addEventListener('blur', (e) => {
 // Easy Onboarding Wizard — a guided first-run flow that seeds the engine
 // from a handful of questions, then hands off to the full dashboard.
 // ======================================================================
-const WIZ_TOTAL = 7;   // total step count (step 1 = welcome)
-const WIZ_GOAL_TOTAL = 3; // goal-builder track step count (excludes welcome/choice)
-const WIZ_AGE_MAX = 90; // upper bound for current age & retirement age (mirrors the main inputs)
-// track: 'forecast' (know your number → full quick setup) | 'goal' (not yet → Goal Builder pathway)
-const wiz = { step: 1, goalStep: 1, track: 'forecast', household: 'single', goalHousehold: 'single', assetMode: 'single', knowsFireNumber: null };
+// --- Setup wizard: linear 4-step flow -------------------------------------
+// Welcome (step 1) -> Household (2) -> Location (3) -> Spending (4) ->
+// Savings (5) -> Completion (6). Steps 3 and 5 are optional ("Skip for now").
+const WIZ_STEPS = 4;   // number of content steps
+const WIZ_LAST = 5;    // data-step index of the last content step (Savings)
+const WIZ_DONE = 6;    // completion screen
+const WIZ_AGE_MAX = 90;
+const OPTIONAL_STEPS = [3, 5];
+const wiz = { step: 1, household: 'single', spendTier: 'base', keepAccounts: false };
 
-// Strip '$', ',' and whitespace, then parse. Returns null for blank (so we can
-// tell "user left it empty" from "user typed 0" and apply the right fallback).
 function wizSanitize(v) { return String(v == null ? '' : v).replace(/[$,\s]/g, ''); }
-
-// Pretty thousands-separators on the wizard's dollar fields (inputmode="decimal").
-// Purely cosmetic — wizRawNum strips the commas again on read. Skips blank inputs
-// so optional fields keep their placeholder instead of showing "0".
 function wizFormatMoneyFields() {
   document.querySelectorAll('#onboarding-wizard input[inputmode="decimal"]')
     .forEach((t) => { if (t.value.trim() !== '') t.value = fmtInput(t.value); });
 }
 function wizRawNum(id) {
+  if (!$(id)) return null;
   const v = wizSanitize($(id).value);
   if (v === '') return null;
   const n = parseFloat(v);
@@ -3797,366 +4032,222 @@ function wizRawNum(id) {
 function wizSetHousehold(val) {
   wiz.household = val === 'couple' ? 'couple' : 'single';
   document.querySelectorAll('#wizHouseholdChoice .wiz-choice')
-    .forEach((b) => b.classList.toggle('active', b.dataset.household === wiz.household));
-  document.querySelectorAll('.wiz-couple-only')
-    .forEach((el) => el.classList.toggle('hidden', wiz.household !== 'couple'));
+    .forEach((b) => { const on = b.dataset.household === wiz.household; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+  document.querySelectorAll('.wiz-couple-only').forEach((el) => el.classList.toggle('hidden', wiz.household !== 'couple'));
   wizValidateLive();
 }
 
-function wizSetAssetMode(val) {
-  wiz.assetMode = val === 'breakdown' ? 'breakdown' : 'single';
-  document.querySelectorAll('#wizAssetChoice .wiz-choice')
-    .forEach((b) => b.classList.toggle('active', b.dataset.assetmode === wiz.assetMode));
-  $('wizAssetSingle').classList.toggle('hidden', wiz.assetMode !== 'single');
-  $('wizAssetBreakdown').classList.toggle('hidden', wiz.assetMode !== 'breakdown');
-}
-
-function wizSetFireKnown(val) {
-  wiz.knowsFireNumber = val === 'yes' ? 'yes' : (val === 'no' ? 'no' : null);
-  document.querySelectorAll('#wizFireChoice .wiz-choice')
-    .forEach((b) => b.classList.toggle('active', b.dataset.fireknown === wiz.knowsFireNumber));
+// Spending preset pills prefill the amount with the tier's COL-adjusted budget.
+function wizSetSpendTier(tier) {
+  wiz.spendTier = tier;
+  document.querySelectorAll('#wizSpendTier .wiz-choice')
+    .forEach((b) => { const on = b.dataset.tier === tier; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+  if ($('wizSpend') && typeof colAdjustedCategories === 'function' && typeof SPEND_TIER_BASE !== 'undefined' && SPEND_TIER_BASE[tier] != null) {
+    const total = Math.round(Object.values(colAdjustedCategories(SPEND_TIER_BASE[tier])).reduce((s, v) => s + v, 0));
+    $('wizSpend').value = fmtInput(total);
+  }
   wizValidateLive();
 }
 
-// Per-step validation. Returns { ok, msg, bad:[ids] }.
-//  - Ages (step 3) & retirement ages (step 4) & desired income (step 7) are required.
-//  - Retirement age must be >= current age.
+function showWizError(msg) { const e = $('wizError'); if (e) { e.textContent = msg; e.classList.remove('hidden'); } }
+function clearWizError() { const e = $('wizError'); if (e) e.classList.add('hidden'); }
+function markWizBadFields(ids) {
+  document.querySelectorAll('#onboarding-wizard .wiz-field input').forEach((i) => i.classList.remove('wiz-bad'));
+  (ids || []).forEach((id) => { if ($(id)) $(id).classList.add('wiz-bad'); });
+}
+
+// Per-step validation. Household ages required + retirement > current; spending
+// required. Location and Savings are optional.
 function wizValidateStep(step) {
-  const isCouple = wiz.household === 'couple';
-  const bad = [];
+  const mark = (ids, msg) => ({ ok: false, msg, bad: ids });
   if (step === 2) {
-    if (!wiz.knowsFireNumber) return { ok: false, msg: 'Please choose whether you know your FIRE number.', bad: [] };
-  } else if (step === 3) {
-    const a = wizRawNum('wizAgeA'); if (a == null || a <= 0 || a > WIZ_AGE_MAX) bad.push('wizAgeA');
-    if (isCouple) { const b = wizRawNum('wizAgeB'); if (b == null || b <= 0 || b > WIZ_AGE_MAX) bad.push('wizAgeB'); }
-    if (bad.length) return { ok: false, msg: `Please enter a current age between 1 and ${WIZ_AGE_MAX}.`, bad };
-  } else if (step === 4) {
-    const a = wizRawNum('wizAgeA'), b = wizRawNum('wizAgeB');
-    const ra = wizRawNum('wizRetA');
-    if (ra == null || ra <= 0) return { ok: false, msg: 'Please enter a desired retirement age.', bad: ['wizRetA'] };
-    if (ra > WIZ_AGE_MAX) return { ok: false, msg: `Retirement age must be ${WIZ_AGE_MAX} or under.`, bad: ['wizRetA'] };
-    if (a != null && ra < a) return { ok: false, msg: 'Retirement age must be at or after your current age.', bad: ['wizRetA'] };
-    if (isCouple) {
-      const rb = wizRawNum('wizRetB');
-      if (rb == null || rb <= 0) return { ok: false, msg: "Please enter your partner's retirement age.", bad: ['wizRetB'] };
-      if (rb > WIZ_AGE_MAX) return { ok: false, msg: `Partner's retirement age must be ${WIZ_AGE_MAX} or under.`, bad: ['wizRetB'] };
-      if (b != null && rb < b) return { ok: false, msg: "Partner's retirement age must be at or after their current age.", bad: ['wizRetB'] };
+    const ageA = wizRawNum('wizAgeA'), retA = wizRawNum('wizRetA');
+    const bad = [];
+    if (ageA == null || ageA < 18 || ageA > WIZ_AGE_MAX) bad.push('wizAgeA');
+    if (retA == null || retA < 18 || retA > WIZ_AGE_MAX) bad.push('wizRetA');
+    if (ageA != null && retA != null && retA < ageA) return mark(['wizRetA'], 'Retirement age must be greater than your current age.');
+    if (wiz.household === 'couple') {
+      const ageB = wizRawNum('wizAgeB'), retB = wizRawNum('wizRetB');
+      if (ageB == null || ageB < 18 || ageB > WIZ_AGE_MAX) bad.push('wizAgeB');
+      if (retB == null || retB < 18 || retB > WIZ_AGE_MAX) bad.push('wizRetB');
+      if (ageB != null && retB != null && retB < ageB) return mark(['wizRetB'], "Partner's retirement age must be greater than their current age.");
     }
-  } else if (step === 7) {
-    const d = wizRawNum('wizDesired');
-    if (d == null || d <= 0) return { ok: false, msg: 'Please enter your desired retirement income.', bad: ['wizDesired'] };
+    if (bad.length) return mark(bad, 'Enter valid ages between 18 and 90.');
   }
-  return { ok: true, msg: '', bad: [] };
+  if (step === 4) {
+    const sp = wizRawNum('wizSpend');
+    if (sp == null || sp <= 0) return mark(['wizSpend'], 'Enter your desired annual retirement spending.');
+  }
+  return { ok: true };
 }
-
-// Live feedback: disable Next when invalid; surface the message only once the
-// user has actually typed something wrong (don't scold an untouched field).
 function wizValidateLive() {
-  const res = wiz.track === 'goal' ? wizGoalValidateStep(wiz.goalStep) : wizValidateStep(wiz.step);
-  $('wizNextBtn').disabled = !res.ok;
-  document.querySelectorAll('.wizard-step input').forEach((i) => i.classList.remove('wiz-invalid'));
-  const touched = res.bad.filter((id) => wizSanitize($(id).value) !== '');
-  const err = $('wizError');
-  if (!res.ok && touched.length) {
-    err.textContent = res.msg; err.classList.remove('hidden');
-    touched.forEach((id) => $(id).classList.add('wiz-invalid'));
-  } else {
-    err.textContent = ''; err.classList.add('hidden');
-  }
+  const res = wizValidateStep(wiz.step);
+  if (res.ok) { clearWizError(); markWizBadFields([]); }
 }
 
 function wizShow(step) {
-  wiz.track = 'forecast';
-  wiz.step = Math.max(1, Math.min(WIZ_TOTAL, step));
-  document.querySelectorAll('.wizard-step')
-    .forEach((s) => s.classList.toggle('hidden', +s.dataset.step !== wiz.step));
-  $('wizProgressBar').style.width = (wiz.step / WIZ_TOTAL * 100) + '%';
-  const isWelcome = wiz.step === 1;
-  $('wizNav').classList.toggle('hidden', isWelcome);
-  $('wizBackBtn').classList.toggle('hidden', wiz.step <= 2);
-  $('wizNextBtn').textContent = wiz.step === WIZ_TOTAL ? 'Finish' : 'Next';
-  $('wizStepCount').textContent = isWelcome ? '' : `Step ${wiz.step - 1} of ${WIZ_TOTAL - 1}`;
-  const firstInput = document.querySelector(`.wizard-step[data-step="${wiz.step}"] input`);
-  if (firstInput) setTimeout(() => firstInput.focus(), 30);
-  wizFormatMoneyFields();
-  wizValidateLive();
+  wiz.step = Math.max(1, Math.min(WIZ_DONE, step));
+  document.querySelectorAll('.wizard-step').forEach((s) => s.classList.toggle('hidden', +s.dataset.step !== wiz.step));
+  const welcome = wiz.step === 1, done = wiz.step === WIZ_DONE, idx = wiz.step - 1;
+  if ($('wizProgressBar')) $('wizProgressBar').style.width = done ? '100%' : welcome ? '0%' : `${idx / WIZ_STEPS * 100}%`;
+  if ($('wizNav')) $('wizNav').classList.toggle('hidden', welcome || done);
+  if ($('wizBackBtn')) $('wizBackBtn').classList.toggle('hidden', wiz.step <= 2);
+  if ($('wizNextBtn')) $('wizNextBtn').textContent = wiz.step === WIZ_LAST ? 'Finish setup' : 'Continue';
+  if ($('wizStepCount')) $('wizStepCount').textContent = (welcome || done) ? '' : `Step ${idx} of ${WIZ_STEPS}`;
+  if ($('wizSkipStepBtn')) $('wizSkipStepBtn').classList.toggle('hidden', !OPTIONAL_STEPS.includes(wiz.step));
+  clearWizError(); markWizBadFields([]);
+  const first = document.querySelector(`.wizard-step[data-step="${wiz.step}"] input`);
+  if (first) setTimeout(() => { try { first.focus(); } catch (e) { /* ignore */ } }, 30);
 }
-
 function wizNext() {
-  if (wiz.track === 'goal') return wizGoalNext();
   const res = wizValidateStep(wiz.step);
-  if (!res.ok) { // guard (Next is normally disabled when invalid)
-    $('wizError').textContent = res.msg; $('wizError').classList.remove('hidden');
-    res.bad.forEach((id) => $(id).classList.add('wiz-invalid'));
-    return;
-  }
-  if (wiz.step === 2 && wiz.knowsFireNumber === 'no') return wizStartGoalTrack();
-  if (wiz.step === WIZ_TOTAL) return wizFinish();
+  if (!res.ok) { showWizError(res.msg); markWizBadFields(res.bad || []); return; }
+  wizFormatMoneyFields();
+  if (wiz.step === WIZ_LAST) return wizComplete();
   wizShow(wiz.step + 1);
 }
-function wizBack() {
-  if (wiz.track === 'goal') return wizGoalBack();
-  if (wiz.step > 2) wizShow(wiz.step - 1);
-}
+function wizSkipStep() { if (wiz.step === WIZ_LAST) return wizComplete(); wizShow(wiz.step + 1); }
+function wizBack() { if (wiz.step > 2) wizShow(wiz.step - 1); }
 
-// ---- Goal Builder track: a guided pathway for users who don't yet know their
-//      number. Shapes the Goal Builder fields instead of the full forecast. ----
-function wizSetGoalHousehold(val) {
-  wiz.goalHousehold = val === 'couple' ? 'couple' : 'single';
-  document.querySelectorAll('#wizGoalHouseholdChoice .wiz-choice')
-    .forEach((b) => b.classList.toggle('active', b.dataset.ghousehold === wiz.goalHousehold));
-  document.querySelectorAll('.wiz-gcouple-only')
-    .forEach((el) => el.classList.toggle('hidden', wiz.goalHousehold !== 'couple'));
-  // Step 3 ("People in your household") used to stay frozen at whatever it was
-  // seeded with at wizard start, completely ignoring the Single/Couple choice
-  // made right here in step 1 — picking "Couple" still showed "1" later. Keep
-  // it in sync with the household choice; the user can still type a different
-  // number in step 3 themselves (e.g. couple + kids).
-  if ($('wizGoalHouseholdSize')) $('wizGoalHouseholdSize').value = wiz.goalHousehold === 'couple' ? 2 : 1;
-  wizValidateLive();
-}
-
-function wizStartGoalTrack() {
-  // Seed from any existing Goal Builder values so a re-run shows current inputs.
-  $('wizGoalAgeA').value = $('goalAgeA') ? $('goalAgeA').value : '';
-  $('wizGoalRetA').value = $('goalRetA') ? $('goalRetA').value : '';
-  $('wizGoalAgeB').value = $('goalAgeB') ? $('goalAgeB').value : '';
-  $('wizGoalRetB').value = $('goalRetB') ? $('goalRetB').value : '';
-  if ($('acaHousehold')) $('wizGoalHouseholdSize').value = $('acaHousehold').value || '';
-  if (spendingPhases[0]) $('wizGoalSpend').value = spendingPhases[0].annualSpend || '';
-  wizSetGoalHousehold($('goalHousehold') && $('goalHousehold').value === 'couple' ? 'couple' : 'single');
-  wizGoalShow(1);
-}
-
-function wizGoalShow(n) {
-  wiz.track = 'goal';
-  wiz.goalStep = Math.max(1, Math.min(WIZ_GOAL_TOTAL, n));
-  document.querySelectorAll('.wizard-step')
-    .forEach((s) => s.classList.toggle('hidden', +s.dataset.goalstep !== wiz.goalStep));
-  $('wizProgressBar').style.width = (wiz.goalStep / WIZ_GOAL_TOTAL * 100) + '%';
-  $('wizNav').classList.remove('hidden');
-  $('wizBackBtn').classList.remove('hidden'); // Back always available (step 1 → the choice)
-  $('wizNextBtn').textContent = wiz.goalStep === WIZ_GOAL_TOTAL ? 'Finish' : 'Next';
-  $('wizStepCount').textContent = `Step ${wiz.goalStep} of ${WIZ_GOAL_TOTAL}`;
-  const firstInput = document.querySelector(`.wizard-step[data-goalstep="${wiz.goalStep}"] input`);
-  if (firstInput) setTimeout(() => firstInput.focus(), 30);
-  wizFormatMoneyFields();
-  wizValidateLive();
-}
-
-function wizGoalNext() {
-  const res = wizGoalValidateStep(wiz.goalStep);
-  if (!res.ok) {
-    $('wizError').textContent = res.msg; $('wizError').classList.remove('hidden');
-    res.bad.forEach((id) => $(id).classList.add('wiz-invalid'));
-    return;
-  }
-  if (wiz.goalStep === WIZ_GOAL_TOTAL) return wizGoalFinish();
-  wizGoalShow(wiz.goalStep + 1);
-}
-
-function wizGoalBack() {
-  if (wiz.goalStep > 1) { wizGoalShow(wiz.goalStep - 1); return; }
-  wizShow(2); // back from goal step 1 returns to the "know your number?" choice
-}
-
-function wizGoalValidateStep(step) {
-  const isCouple = wiz.goalHousehold === 'couple';
-  if (step === 1) {
-    const bad = [];
-    const a = wizRawNum('wizGoalAgeA'); if (a == null || a <= 0 || a > WIZ_AGE_MAX) bad.push('wizGoalAgeA');
-    const ra = wizRawNum('wizGoalRetA'); if (ra == null || ra <= 0 || ra > WIZ_AGE_MAX) bad.push('wizGoalRetA');
-    if (isCouple) {
-      const b = wizRawNum('wizGoalAgeB'); if (b == null || b <= 0 || b > WIZ_AGE_MAX) bad.push('wizGoalAgeB');
-      const rb = wizRawNum('wizGoalRetB'); if (rb == null || rb <= 0 || rb > WIZ_AGE_MAX) bad.push('wizGoalRetB');
-    }
-    if (bad.length) return { ok: false, msg: `Please enter ages between 1 and ${WIZ_AGE_MAX}.`, bad };
-    if (a != null && ra != null && ra < a) return { ok: false, msg: 'Retirement age must be at or after your current age.', bad: ['wizGoalRetA'] };
-  } else if (step === 2) {
-    const s = wizRawNum('wizGoalSpend');
-    if (s == null || s <= 0) return { ok: false, msg: 'Please enter your estimated annual spending.', bad: ['wizGoalSpend'] };
-  }
-  return { ok: true, msg: '', bad: [] }; // step 3 (household size) is optional
-}
-
-function wizGoalFinish() {
-  const isCouple = wiz.goalHousehold === 'couple';
+// Apply the collected answers into the app (Your Target owns the values).
+function wizApply() {
+  const isCouple = wiz.household === 'couple';
   if ($('goalHousehold')) $('goalHousehold').value = isCouple ? 'couple' : 'single';
-  if ($('goalAgeA')) $('goalAgeA').value = wizRawNum('wizGoalAgeA');
-  if ($('goalRetA')) $('goalRetA').value = wizRawNum('wizGoalRetA');
-  if (isCouple) {
-    if ($('goalAgeB')) $('goalAgeB').value = wizRawNum('wizGoalAgeB');
-    if ($('goalRetB')) $('goalRetB').value = wizRawNum('wizGoalRetB');
-  }
-  // Spending → a single starting phase (duration derived from the retirement age
-  // just set), and mirror it into the Forecast "desired income" so the tabs agree.
-  const spend = wizRawNum('wizGoalSpend') || 0;
-  if (spend > 0) {
-    const def = phaseDefaults()[0];
-    spendingPhases = [makePhase({ name: 'Retirement spending', annualSpend: spend, years: def.years, info: def.info })];
-    if ($('desired')) $('desired').value = spend;
-  }
-  const hh = wizRawNum('wizGoalHouseholdSize');
-  if (hh != null && hh > 0 && $('acaHousehold')) $('acaHousehold').value = hh;
-
+  const setGoal = (id, v) => { if ($(id) && v != null) $(id).value = v; };
+  setGoal('goalAgeA', wizRawNum('wizAgeA'));
+  setGoal('goalRetA', wizRawNum('wizRetA'));
+  if (isCouple) { setGoal('goalAgeB', wizRawNum('wizAgeB')); setGoal('goalRetB', wizRawNum('wizRetB')); }
   if (typeof toggleGoalCouple === 'function') toggleGoalCouple();
-  renderPhases();
-  closeWizard();
+
+  // Location
+  if ($('goalZip') && $('wizZip')) { $('goalZip').value = wizSanitize($('wizZip').value); refreshLocation(); }
+
+  // Spending: apply the chosen tier to the category budget, then let the stated
+  // amount own the blended figure (Your Target is the single source of truth).
+  if (wiz.spendTier && typeof applySpendTier === 'function') applySpendTier(wiz.spendTier);
+  const spend = wizRawNum('wizSpend') || 0;
+  spendingPhases = spend > 0
+    ? [makePhase({ name: 'Retirement spending', annualSpend: spend, years: phaseDefaults()[0].years, info: phaseDefaults()[0].info })]
+    : phaseDefaults().map(makePhase);
+
+  // Savings: one plain account (never fabricated demo data). "Keep accounts and
+  // reset target" leaves existing accounts/streams untouched.
+  if (!wiz.keepAccounts) {
+    accountGroups = []; incomeStreams = []; debtLumpSums = []; scenarioEvents = [];
+    vehicleItems = []; supportItems = []; kids529Items = []; customExpenseItems = [];
+    const total = wizRawNum('wizTotalSavings') || 0;
+    const contrib = wizRawNum('wizContributions') || 0;
+    accountGroups.push(makeGroup({ name: 'Initial Savings', type: 'other', subAccounts: [
+      makeSubAccount({ category: 'total', label: 'Total', balance: total, baseContribution: contrib }),
+    ] }));
+  }
+
+  toggleCouple();
+  renderAccounts(); syncLegacyFields(); renderStreams(); renderLumps(); renderEvents();
+  renderPhases(); renderVehicles(); renderSupport(); renderKids529(); renderCustomExpenses();
   recompute();
-  switchTab('goal');
   saveState();
-  flashStatus('Your Target is ready ✓');
+}
+
+function renderWizResult() {
+  const el = $('wizResult'); if (!el) return;
+  const inputs = buildInputs();
+  const f = forecast(inputs);
+  const hasSavings = inputs.householdBalance > 0 || inputs.householdAnnual > 0;
+  const fireAge = !hasSavings ? 'Add savings to calculate'
+    : (f.milestones.full.ageHit != null ? `Age ${fmtAge(f.milestones.full.ageHit)}` : 'Not projected by your retirement age');
+  const coast = f.milestones.coast;
+  const coastStatus = !hasSavings ? 'Add savings to calculate'
+    : (coast.reached ? 'Reached — contributions optional' : (coast.coastAge != null ? `Projected at age ${fmtAge(coast.coastAge)}` : 'Not yet on this plan'));
+  el.innerHTML = `
+    <div class="wiz-result-row"><span>Your FIRE target</span><strong>${fmt$k(f.fullFire)}</strong></div>
+    <div class="wiz-result-row"><span>Projected FIRE age</span><strong>${fireAge}</strong></div>
+    <div class="wiz-result-row"><span>Coast status</span><strong>${coastStatus}</strong></div>`;
+}
+function wizComplete() {
+  wizApply();
+  renderWizResult();
+  wizShow(WIZ_DONE);
 }
 
 function openWizard(prefill) {
-  wiz.track = 'forecast'; // always start at the shared welcome/choice
-  wizSetFireKnown(null);
-  if (prefill) { // re-run: seed the form from the current live inputs
-    $('wizAgeA').value = $('ageA').value;
-    $('wizRetA').value = $('retA').value;
-    $('wizAgeB').value = $('ageB').value;
-    $('wizRetB').value = $('retB').value;
-    $('wizDesired').value = $('desired').value;
-    if ($('healthcare').value) $('wizHealthcare').value = $('healthcare').value;
-    wizSetHousehold($('household').value === 'couple' ? 'couple' : 'single');
+  wiz.keepAccounts = false;
+  wizSetSpendTier('base');
+  if (prefill) {
+    const g = (gid, fid) => ($(gid) && $(gid).value) || ($(fid) && $(fid).value) || '';
+    if ($('wizAgeA')) $('wizAgeA').value = g('goalAgeA', 'ageA');
+    if ($('wizRetA')) $('wizRetA').value = g('goalRetA', 'retA');
+    if ($('wizAgeB')) $('wizAgeB').value = g('goalAgeB', 'ageB');
+    if ($('wizRetB')) $('wizRetB').value = g('goalRetB', 'retB');
+    if ($('wizZip') && $('goalZip')) $('wizZip').value = $('goalZip').value;
+    if ($('wizSpend') && $('desired')) $('wizSpend').value = $('desired').value;
+    if ($('wizTotalSavings') && $('bal')) $('wizTotalSavings').value = $('bal').value;
+    if ($('wizContributions') && $('con')) $('wizContributions').value = $('con').value;
+    wizSetHousehold(($('goalHousehold') && $('goalHousehold').value === 'couple') ? 'couple' : 'single');
   } else {
     wizSetHousehold('single');
   }
-  wizSetAssetMode('single');
   const o = $('onboarding-wizard');
-  o.classList.remove('hidden');
-  o.setAttribute('aria-hidden', 'false');
+  o.classList.remove('hidden'); o.setAttribute('aria-hidden', 'false');
   document.body.classList.add('wiz-open');
   wizShow(1);
 }
-
 function closeWizard() {
   const o = $('onboarding-wizard');
-  o.classList.add('hidden');
-  o.setAttribute('aria-hidden', 'true');
+  o.classList.add('hidden'); o.setAttribute('aria-hidden', 'true');
   document.body.classList.remove('wiz-open');
 }
 
-// Apply the wizard answers to the live dashboard, seed the account engine,
-// then recompute + persist.
-function wizFinish() {
-  const isCouple = wiz.household === 'couple';
-
-  // --- Map basics onto the existing DOM fields ---
-  $('household').value = isCouple ? 'couple' : 'single';
-  $('ageA').value = wizRawNum('wizAgeA');
-  $('retA').value = wizRawNum('wizRetA');
-  if (isCouple) {
-    $('ageB').value = wizRawNum('wizAgeB');
-    $('retB').value = wizRawNum('wizRetB');
-  }
-  $('desired').value = wizRawNum('wizDesired');
-  // Healthcare fallback: blank -> $6k (single) / $12k (couple).
-  const hc = wizRawNum('wizHealthcare');
-  $('healthcare').value = hc == null ? (isCouple ? 12000 : 6000) : hc;
-
-  // --- Clear existing engine collections so re-running doesn't double-count.
-  //     (This app models contributions/income via accounts + income streams;
-  //      there is no separate `expenses` array to clear.) ---
-  accountGroups = [];
-  incomeStreams = [];
-  debtLumpSums = [];      // v2 cleanup-on-finish
-  scenarioEvents = [];    // v2 cleanup-on-finish
-  // Your Target owns retirement spending. If the quick-setup user stated a
-  // number, seed ONE spending phase with it so that stated figure is the single
-  // source of truth the whole app reads from; otherwise use the default phases.
-  const wizSpend = wizRawNum('wizDesired') || 0;
-  spendingPhases = wizSpend > 0
-    ? [makePhase({ name: 'Retirement spending', annualSpend: wizSpend, years: phaseDefaults()[0].years, info: phaseDefaults()[0].info })]
-    : phaseDefaults().map(makePhase);
-  vehicleItems = [];      // v2.1 cleanup-on-finish
-  supportItems = [];      // v2.1 cleanup-on-finish
-  kids529Items = [];      // v2.1 cleanup-on-finish
-  customExpenseItems = []; // v2.1 cleanup-on-finish
-
-  // Blank assets / contributions default to 0.
-  const contributions = wizRawNum('wizContributions') || 0;
-
-  if (wiz.assetMode === 'breakdown') {
-    const pretax  = wizRawNum('wizPretax')  || 0;
-    const roth    = wizRawNum('wizRoth')    || 0;
-    const hsa     = wizRawNum('wizHSA')     || 0;
-    const c457    = wizRawNum('wiz457')     || 0;
-    const taxable = wizRawNum('wizTaxable') || 0;
-    accountGroups.push(makeGroup({ name: 'Initial Savings', type: 'other', subAccounts: [
-      // Step-6 total contribution defaults onto the Pre-tax sub-account.
-      makeSubAccount({ category: 'pretax',  label: 'Pre-tax', balance: pretax, baseContribution: contributions }),
-      makeSubAccount({ category: 'roth',    label: 'Roth',    balance: roth }),
-      makeSubAccount({ category: 'pretax',  label: 'HSA',     balance: hsa }),
-      makeSubAccount({ category: 'pretax',  label: '457(b)',  balance: c457 }),
-      makeSubAccount({ category: 'taxable', label: 'Taxable', balance: taxable }),
-    ] }));
-    // Future pension -> a lifetime income stream starting at retirement.
-    const pension = wizRawNum('wizPension') || 0;
-    if (pension > 0) {
-      const startAge = wizRawNum('wizRetA') || num('retA');
-      incomeStreams.push(makeStream({ label: 'Pension', annualAmount: pension, startAge, endAge: 110 }));
-    }
-  } else {
-    const total = wizRawNum('wizTotalSavings') || 0;
-    accountGroups.push(makeGroup({ name: 'Initial Savings', type: 'other', subAccounts: [
-      makeSubAccount({ category: 'total', label: 'Total', balance: total, baseContribution: contributions }),
-    ] }));
-  }
-
-  // --- Re-sync derived UI, recompute, persist ---
-  toggleCouple();
-  renderAccounts();
-  syncLegacyFields();
-  renderStreams();
-  renderLumps();
-  renderEvents();
-  renderPhases();
-  renderVehicles();
-  renderSupport();
-  renderKids529();
-  renderCustomExpenses();
-  closeWizard();
-  recompute();
-  switchTab('forecast'); // full Quick Setup → show the forecast result they just built
-  saveState();
-  flashStatus('Setup complete ✓');
+// Re-run confirmation ("Start setup again?").
+function openRerunConfirm() {
+  if ($('wizRerunConfirm')) { $('wizRerunConfirm').classList.remove('hidden'); $('wizRerunConfirm').setAttribute('aria-hidden', 'false'); }
+  else openWizard(true);
+}
+function closeRerunConfirm() {
+  if ($('wizRerunConfirm')) { $('wizRerunConfirm').classList.add('hidden'); $('wizRerunConfirm').setAttribute('aria-hidden', 'true'); }
 }
 
-// Wizard wiring
-$('wizStartBtn').addEventListener('click', () => wizShow(2));
-// Skip / close: leave the wizard at any time, persisting current state so we
-// don't nag on reload. Both land the user on the dashboard (Goal Builder).
-// Skipping loads the starter assumptions — say exactly that (never imply the
-// user saved anything they didn't enter).
+// --- Wizard wiring ---------------------------------------------------------
+if ($('wizStartBtn')) $('wizStartBtn').addEventListener('click', () => wizShow(2));
 const wizDismiss = () => { closeWizard(); saveState(); flashStatus('Using starter assumptions — edit anytime'); };
-$('wizSkipBtn').addEventListener('click', wizDismiss);
+if ($('wizSkipBtn')) $('wizSkipBtn').addEventListener('click', wizDismiss);
 if ($('wizCloseBtn')) $('wizCloseBtn').addEventListener('click', wizDismiss);
-$('wizNextBtn').addEventListener('click', wizNext);
-$('wizBackBtn').addEventListener('click', wizBack);
-$('rerunWizardBtn').addEventListener('click', () => openWizard(true));
-document.querySelectorAll('#wizFireChoice .wiz-choice')
-  .forEach((b) => b.addEventListener('click', () => wizSetFireKnown(b.dataset.fireknown)));
+if ($('wizNextBtn')) $('wizNextBtn').addEventListener('click', wizNext);
+if ($('wizBackBtn')) $('wizBackBtn').addEventListener('click', wizBack);
+if ($('wizSkipStepBtn')) $('wizSkipStepBtn').addEventListener('click', wizSkipStep);
+if ($('wizViewTimelineBtn')) $('wizViewTimelineBtn').addEventListener('click', () => { closeWizard(); switchTab('forecast'); flashStatus('Setup complete ✓'); });
+if ($('rerunWizardBtn')) $('rerunWizardBtn').addEventListener('click', openRerunConfirm);
 document.querySelectorAll('#wizHouseholdChoice .wiz-choice')
   .forEach((b) => b.addEventListener('click', () => wizSetHousehold(b.dataset.household)));
-document.querySelectorAll('#wizGoalHouseholdChoice .wiz-choice')
-  .forEach((b) => b.addEventListener('click', () => wizSetGoalHousehold(b.dataset.ghousehold)));
-document.querySelectorAll('#wizAssetChoice .wiz-choice')
-  .forEach((b) => b.addEventListener('click', () => wizSetAssetMode(b.dataset.assetmode)));
-// Keep wizard typing out of the global recompute/autosave (stopPropagation) and
-// run live validation instead. (Inputs are also data-nostate, so they never
-// leak into collectState.)
+document.querySelectorAll('#wizSpendTier .wiz-choice')
+  .forEach((b) => b.addEventListener('click', () => wizSetSpendTier(b.dataset.tier)));
+// Editing the spending amount by hand clears the active preset (custom value).
+if ($('wizSpend')) $('wizSpend').addEventListener('input', () => {
+  wiz.spendTier = null;
+  document.querySelectorAll('#wizSpendTier .wiz-choice').forEach((b) => { b.classList.remove('active'); b.setAttribute('aria-pressed', 'false'); });
+});
+// Live ZIP feedback in the Location step.
+if ($('wizZip')) $('wizZip').addEventListener('input', () => {
+  const el = $('wizZipResult'); if (!el) return;
+  const z = wizSanitize($('wizZip').value);
+  if (z.length < 5) { el.textContent = 'Your ZIP code stays in this browser and is not sent to an account.'; el.classList.remove('wiz-zip-ok', 'wiz-zip-bad'); return; }
+  const loc = (typeof lookupLocation === 'function') ? lookupLocation(z) : null;
+  if (loc && loc.matched) { el.textContent = `✓ ${loc.city} — cost of living ${loc.rpp_all}% of US average.`; el.classList.add('wiz-zip-ok'); el.classList.remove('wiz-zip-bad'); }
+  else { el.textContent = 'ZIP not recognized — we\'ll use US national averages. You can change it later.'; el.classList.add('wiz-zip-bad'); el.classList.remove('wiz-zip-ok'); }
+});
+// Re-run confirm dialog actions.
+if ($('rerunKeepBtn')) $('rerunKeepBtn').addEventListener('click', () => { wiz.keepAccounts = true; closeRerunConfirm(); openWizard(true); wiz.keepAccounts = true; });
+if ($('rerunResetBtn')) $('rerunResetBtn').addEventListener('click', () => { closeRerunConfirm(); openWizard(false); });
+if ($('rerunCancelBtn')) $('rerunCancelBtn').addEventListener('click', closeRerunConfirm);
+
 $('onboarding-wizard').addEventListener('input', (e) => { wizValidateLive(); e.stopPropagation(); });
-// Format dollar fields with thousands separators when the user leaves them.
 $('onboarding-wizard').addEventListener('focusout', (e) => {
   const t = e.target;
-  if (t && t.matches && t.matches('input[inputmode="decimal"]') && t.value.trim() !== '') {
-    t.value = fmtInput(t.value);
-  }
+  if (t && t.matches && t.matches('input[inputmode="decimal"]') && t.value.trim() !== '') t.value = fmtInput(t.value);
 });
 $('onboarding-wizard').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && wiz.step >= 2) { e.preventDefault(); wizNext(); }
-  else if (e.key === 'Escape') closeWizard();
+  if (e.key === 'Enter' && wiz.step >= 2 && wiz.step <= WIZ_LAST) { e.preventDefault(); wizNext(); }
+  else if (e.key === 'Escape') wizDismiss();
 });
 
 // A share-param URL takes precedence over saved localStorage.
