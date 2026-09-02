@@ -319,8 +319,8 @@ function refreshLocation() {
     // Click handled by the single delegated [data-jump-tab] listener (see
     // wiring section) — no per-render listener needed here.
     $('locationFromGoal').innerHTML = (userLocation.matched
-      ? `Using ${userLocation.zip} · ${userLocation.city} from Goal Builder`
-      : `Using US national averages from Goal Builder (no ZIP entered)`) +
+      ? `Using ${userLocation.zip} · ${userLocation.city} from Your Target`
+      : `Using US national averages from Your Target (no ZIP entered)`) +
       ` · <a href="#" class="edit-in-goal-link" data-jump-tab="goal">change</a>`;
   }
   if (userLocation.zip !== prevZip) {
@@ -877,7 +877,7 @@ function formatMoneyInputs(root = document) {
 // figure only changes when the user clicks "Pull from Goal Builder".
 function pullDesiredFromGoalBuilder(btn) {
   const phases = goalPhases();
-  if (!phases.length) { showPullConfirm(btn, 'No spending phases entered in Goal Builder yet'); return; }
+  if (!phases.length) { showPullConfirm(btn, 'No spending phases entered in Your Target yet'); return; }
   const blended = Math.round(blendedDesiredIncome(phases));
   $('desired').value = blended;
   syncGoalDesiredInput();
@@ -1941,9 +1941,9 @@ function updatePullGoalButtons() {
   const blended = phases.length ? Math.round(blendedDesiredIncome(phases)) : null;
   document.querySelectorAll('.pull-goal-btn').forEach((b) => {
     b.textContent = blended != null
-      ? `⬇ Use Goal Builder spending: ${fmt$(blended)}/yr`
-      : '⬇ Use Goal Builder spending';
-    b.title = 'Sets your target income to the duration-weighted average of the spending phases you mapped in Goal Builder.';
+      ? `⬇ Use Your Target spending: ${fmt$(blended)}/yr`
+      : '⬇ Use Your Target spending';
+    b.title = 'Sets your target income to the duration-weighted average of the spending phases you mapped in Your Target.';
   });
 }
 
@@ -2564,7 +2564,7 @@ function computeFireCards(f, inputs) {
     `Full FIRE Target = ${hasPhases ? 'phase-blended spending' : 'desired income'} ÷ withdrawal rate (${fmt$(liveIncome)} ÷ ${withdrawalRate.toFixed(1)}%) = ${fmt$k(baseTarget)} (same live figure as the "Full FIRE" card above).\n` +
     `Portfolio equivalent of SS at age ${ssAge} = Social Security ÷ withdrawal rate (${fmt$(ssAnnual)} ÷ ${withdrawalRate.toFixed(1)}%) = ${fmt$k(ssPortfolioEquivalent)}.\n` +
     `Present value of that SS benefit today, discounted ${bridgeYears.toFixed(1)} years at ${withdrawalRate.toFixed(1)}% (the withdrawal rate, used as a conservative proxy for the real investment-growth/discount rate) = ${fmt$k(ssPortfolioEquivalent)} ÷ (1 + ${withdrawalRate.toFixed(1)}%)^${bridgeYears.toFixed(1)} = ${fmt$k(presentValueOfSS)}.\n` +
-    `Net Target = Full FIRE − PV of SS = ${fmt$k(baseTarget)} − ${fmt$k(presentValueOfSS)} = ${fmt$k(netOfSS)}.`]);
+    `Net Target = Full FIRE − present value of Social Security = ${fmt$k(baseTarget)} − ${fmt$k(presentValueOfSS)} = ${fmt$k(netOfSS)}.`]);
   // All-in FIRE — the REAL number, built from a modeled drawdown of just what's
   // on THIS tab (targetDrawdownSeries) instead of a flat 25x on stated spending.
   // Bakes in the healthcare transition (ACA pre-65 → Medicare AT AGE 65, evaluated
@@ -2602,7 +2602,7 @@ function computeFireCards(f, inputs) {
     cards.push(['All-in FIRE', fmt$k(compTarget), `avg. all-in spend: ${fmt$(Math.round(avgRealSpend))}/yr (today's $)`,
       `Average all-in annual cost (today's $) = ${fmt$(Math.round(avgRealSpend))}/yr — base spending, healthcare, lifecycle costs, and taxes, averaged across all ${series.length} years of retirement.\n` +
       `All-in FIRE = average cost ÷ withdrawal rate (${fmt$(Math.round(avgRealSpend))} ÷ ${withdrawalRate.toFixed(1)}%) = ${fmt$k(compTarget)}.`]);
-    cards.push(['All-in FIRE (net of SS)', fmt$k(compTargetNetSS), `${fmt$k(compTarget)} − ${fmt$k(presentValueOfSS)} PV of SS`,
+    cards.push(['All-in FIRE (net of SS)', fmt$k(compTargetNetSS), `${fmt$k(compTarget)} − ${fmt$k(presentValueOfSS)} present value of Social Security`,
       `Same All-in FIRE as above, reduced by the same Present Value of Social Security used in "Full FIRE (net of SS)" (assumes claiming at age ${ssAge}).\n` +
       `Net Target = ${fmt$k(compTarget)} − ${fmt$k(presentValueOfSS)} = ${fmt$k(compTargetNetSS)}.`]);
   }
@@ -3948,7 +3948,7 @@ function wizGoalFinish() {
   recompute();
   switchTab('goal');
   saveState();
-  flashStatus('Goal Builder is ready ✓');
+  flashStatus('Your Target is ready ✓');
 }
 
 function openWizard(prefill) {
@@ -4064,7 +4064,9 @@ function wizFinish() {
 $('wizStartBtn').addEventListener('click', () => wizShow(2));
 // Skip / close: leave the wizard at any time, persisting current state so we
 // don't nag on reload. Both land the user on the dashboard (Goal Builder).
-const wizDismiss = () => { closeWizard(); saveState(); };
+// Skipping loads the starter assumptions — say exactly that (never imply the
+// user saved anything they didn't enter).
+const wizDismiss = () => { closeWizard(); saveState(); flashStatus('Using starter assumptions — edit anytime'); };
 $('wizSkipBtn').addEventListener('click', wizDismiss);
 if ($('wizCloseBtn')) $('wizCloseBtn').addEventListener('click', wizDismiss);
 $('wizNextBtn').addEventListener('click', wizNext);
