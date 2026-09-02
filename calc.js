@@ -406,10 +406,21 @@ function fireNumber(annualSpend, withdrawalRatePct) {
   return annualSpend / (withdrawalRatePct / 100);
 }
 
+// Real (inflation-adjusted) return = (1 + nominal) / (1 + inflation) - 1.
+// Coast FIRE compares a balance against a FIRE target expressed in TODAY'S
+// dollars, so it must compound/discount with the REAL return — using the
+// nominal return would overstate how far a balance coasts once inflation
+// erodes the target's purchasing power. Percent in, percent out.
+function realReturn(nominalReturnPct, inflationPct) {
+  return ((1 + nominalReturnPct / 100) / (1 + inflationPct / 100) - 1) * 100;
+}
+
 // Coast FIRE is an age/growth test: will the CURRENT balance, with zero
 // further contributions, compound to the full FIRE number by retirement?
 // Returns { reached, ageReached } where ageReached is when current savings
 // would coast across the target (may be after retirement age = not reached).
+// NOTE: pass a REAL return here whenever targetFireNumber is in today's
+// dollars (see realReturn) — forecast() does exactly that.
 function coastFire(currentBalance, currentAge, retirementAge, annualReturnPct, targetFireNumber) {
   const r = annualReturnPct / 100;
   if (currentBalance <= 0 || targetFireNumber <= 0) return { reached: false, ageReached: null };
@@ -427,6 +438,8 @@ function coastFire(currentBalance, currentAge, retirementAge, annualReturnPct, t
 // growing with ZERO further contributions, it would reach the full FIRE target
 // by retirement. Returns that age (= currentAge if already coasting), or null
 // if the plan never reaches it before retirement.
+// NOTE: pass a REAL return here whenever targetFireNumber is in today's
+// dollars (see realReturn) — contributions are then treated as today's dollars.
 function ageCoastFireReached(startBalance, annualContribution, currentAge, retirementAge, annualReturnPct, targetFireNumber) {
   if (targetFireNumber <= 0) return null;
   const totalYears = retirementAge - currentAge;
@@ -436,6 +449,28 @@ function ageCoastFireReached(startBalance, annualContribution, currentAge, retir
     if (coastedToRetirement >= targetFireNumber) return currentAge + y;
   }
   return null;
+}
+
+// Coast FIRE number "today": the balance you'd need RIGHT NOW so that, with
+// ZERO further contributions, real growth alone reaches the today's-dollar
+// FIRE target by the retirement age. Discount the target at the real return.
+// (currentAge param lets callers reuse it for any "required at age A" value.)
+function coastNumberToday(targetFireNumber, currentAge, retirementAge, realReturnPct) {
+  const years = Math.max(0, retirementAge - currentAge);
+  return targetFireNumber / Math.pow(1 + realReturnPct / 100, years);
+}
+
+// Build the "Your Coast FIRE path" rows. For each age: the projected invested
+// balance (contributions through that age) versus the required coast balance
+// at that age — both in today's dollars — plus whether coast is reached.
+// realReturnPct must be the REAL return so both sides share today's dollars.
+function coastPath(startBalance, annualContribution, currentAge, retirementAge, realReturnPct, targetFireNumber, ages) {
+  return ages.map((age) => {
+    const y = Math.max(0, age - currentAge);
+    const projected = projectBalance(startBalance, annualContribution, realReturnPct, y);
+    const required = coastNumberToday(targetFireNumber, age, retirementAge, realReturnPct);
+    return { age, projected, required, reached: projected >= required };
+  });
 }
 
 // Given a projected nominal balance at retirement, the age at which the
@@ -602,6 +637,11 @@ function forecast(inputs) {
   const fatFire = fireNumber(fatAnnualSpend, withdrawalRate);
   const baristaFire = fireNumber(Math.max(0, desiredAnnualIncome - baristaPartTimeIncome), withdrawalRate);
 
+  // Coast FIRE works in today's dollars (fullFire is a today's-dollar target),
+  // so every coast projection/discount below uses the REAL return, never the
+  // nominal one. With zero inflation real == nominal, so legacy behavior holds.
+  const coastReturn = realReturn(scenarios.base.return, scenarios.base.inflation);
+
   const milestones = {
     lean: {
       target: leanFire,
@@ -609,10 +649,17 @@ function forecast(inputs) {
       reachedByRetirement: base.balance >= leanFire,
     },
     coast: Object.assign(
-      coastFire(householdBalance, youngestAge, retirementAge, scenarios.base.return, fullFire),
+      coastFire(householdBalance, youngestAge, retirementAge, coastReturn, fullFire),
       {
-        coastAge: ageCoastFireReached(householdBalance, householdAnnual, youngestAge, retirementAge, scenarios.base.return, fullFire),
+        coastAge: ageCoastFireReached(householdBalance, householdAnnual, youngestAge, retirementAge, coastReturn, fullFire),
         targetRetirementAge: retirementAge,
+        // Today's-dollar figures the Coast FIRE UI reads directly.
+        coastReturn,
+        currentBalance: householdBalance,
+        numberToday: coastNumberToday(fullFire, youngestAge, retirementAge, coastReturn),
+        // "If you stopped contributing today": current balance coasted to
+        // retirement on real growth alone (today's dollars).
+        noContribBalanceAtRetirement: projectBalance(householdBalance, 0, coastReturn, Math.max(0, retirementAge - youngestAge)),
         // "Classic" Coast FIRE: coast to a traditional retirement age (65)
         // instead of the user's own (often early) age. With a longer runway
         // this needs less in hand today, so it's typically hit EARLIER than
@@ -622,9 +669,9 @@ function forecast(inputs) {
         classic: (function () {
           const classicAge = Math.max(CLASSIC_COAST_AGE, retirementAge);
           return Object.assign(
-            coastFire(householdBalance, youngestAge, classicAge, scenarios.base.return, fullFire),
+            coastFire(householdBalance, youngestAge, classicAge, coastReturn, fullFire),
             {
-              coastAge: ageCoastFireReached(householdBalance, householdAnnual, youngestAge, classicAge, scenarios.base.return, fullFire),
+              coastAge: ageCoastFireReached(householdBalance, householdAnnual, youngestAge, classicAge, coastReturn, fullFire),
               targetRetirementAge: classicAge,
             }
           );
