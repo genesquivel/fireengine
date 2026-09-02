@@ -1290,11 +1290,20 @@ function renderFire(m) {
       const own = line(`your age ${ms.targetRetirementAge}`, ms.targetRetirementAge, ms.coastAge, ms.reached, ms.ageReached);
       const cl = ms.classic;
       const classic = line(`65 (classic)`, cl.targetRetirementAge, cl.coastAge, cl.reached, cl.ageReached);
+      // Coast FIRE number today: the balance needed right now to coast (no more
+      // contributions) to the Full FIRE target by the chosen retirement age,
+      // discounted at the REAL return. Show current-vs-required with a gap.
+      const bal = ms.currentBalance || 0, need = ms.numberToday || 0;
+      const gap = Math.max(0, need - bal);
+      const todayLine = bal >= need
+        ? `<strong>Coast FIRE number today (retire at ${ms.targetRetirementAge}):</strong> ${fmt$k(need)} — reached, you have ${fmt$k(bal)}.`
+        : `<strong>Coast FIRE number today (retire at ${ms.targetRetirementAge}):</strong> ${fmt$k(need)} — you're ${fmt$k(gap)} away.`;
       // When the plan's own retirement age is already ≥ 65 the two collapse to
       // the same thing — show one line rather than a confusing duplicate.
-      status = (ms.targetRetirementAge >= cl.targetRetirementAge)
+      const ageLines = (ms.targetRetirementAge >= cl.targetRetirementAge)
         ? own
         : `${own}<br>${classic}`;
+      status = `${todayLine}<br>${ageLines}`;
     } else {
       hit = ms.reachedByRetirement;
       status = ms.ageHit != null
@@ -1304,7 +1313,7 @@ function renderFire(m) {
     const wr = num('withdrawalRate');
     let calc;
     if (name === 'Coast FIRE') {
-      calc = `Tests whether your CURRENT balance, with zero further contributions, would compound (at the base return) to the Full FIRE target by a given age.\n"Coast to ${ms.targetRetirementAge}" uses your own retirement age; "Coast to 65" uses the traditional age. A longer runway (to 65) needs less in hand today, so it's usually reached earlier.`;
+      calc = `Coast FIRE works in today's dollars, so it compounds at the REAL return — growth after inflation = (1 + return) / (1 + inflation) − 1 — not the raw return.\nCoast FIRE number today = Full FIRE target ÷ (1 + real return)^(retirement age − your age): the balance that, with zero further contributions, grows into the target by retirement.\n"Coast to ${ms.targetRetirementAge}" uses your own retirement age; "Coast to 65" uses the traditional age. A longer runway (to 65) needs less in hand today, so it's usually reached earlier.`;
     } else if (ms.target) {
       const impliedSpend = ms.target * (wr / 100);
       calc = `Target = annual spend ÷ withdrawal rate (${fmt$(impliedSpend)} ÷ ${wr.toFixed(1)}%) = ${fmt$k(ms.target)}.\n` +
