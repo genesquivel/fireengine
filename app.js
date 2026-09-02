@@ -1287,7 +1287,7 @@ function renderFire(m) {
   // just the milestones-grid/chart presentation.
   const items = [
     ['Lean FIRE', m.lean, 'Frugal spending covered (25× lean spend).'],
-    ['Coast FIRE', m.coast, `Once you hit Coast, current savings compound to your Full FIRE number with no further contributions. Shown two ways: to your own retirement age (${m.coast.targetRetirementAge}) and to the classic age ${m.coast.classic.targetRetirementAge}.`],
+    ['Coast FIRE', m.coast, 'The point where your invested balance grows into your FIRE target on its own — contributions become optional.'],
     ['Full FIRE', m.full, 'Your portfolio alone fully covers your target lifestyle.'],
     ['Fat FIRE', m.fat, 'Elevated/luxury lifestyle fully funded.'],
   ];
@@ -1295,35 +1295,16 @@ function renderFire(m) {
   $('fireGrid').innerHTML = items.map(([name, ms, desc]) => {
     let hit, status, extra = '';
     if (name === 'Coast FIRE') {
+      // Concise status only — the full Coast FIRE experience (number today,
+      // projected age, no-contributions outcome, coast path) has its own panel
+      // right below this grid.
       hit = ms.reached;
-      // Two readouts: coast to the user's OWN retirement age, and the classic
-      // coast to 65. The classic figure usually lands earlier (longer runway).
-      const line = (label, targetAge, coastAge, reached, reachedAge) => {
-        if (reached) {
-          return `<strong>Coast to ${targetAge}:</strong> reached — you could stop contributing now (coasts to goal by ${fmtAge(reachedAge)})`;
-        }
-        if (coastAge != null) {
-          return `<strong>Coast to ${targetAge}:</strong> hit around age <strong>${fmtAge(coastAge)}</strong>, then contributions optional`;
-        }
-        return `<strong>Coast to ${targetAge}:</strong> not yet on this plan — keep contributing and it comes into range`;
-      };
-      const own = line(`your age ${ms.targetRetirementAge}`, ms.targetRetirementAge, ms.coastAge, ms.reached, ms.ageReached);
-      const cl = ms.classic;
-      const classic = line(`65 (classic)`, cl.targetRetirementAge, cl.coastAge, cl.reached, cl.ageReached);
-      // Coast FIRE number today: the balance needed right now to coast (no more
-      // contributions) to the Full FIRE target by the chosen retirement age,
-      // discounted at the REAL return. Show current-vs-required with a gap.
-      const bal = ms.currentBalance || 0, need = ms.numberToday || 0;
-      const gap = Math.max(0, need - bal);
-      const todayLine = bal >= need
-        ? `<strong>Coast FIRE number today (retire at ${ms.targetRetirementAge}):</strong> ${fmt$k(need)} — reached, you have ${fmt$k(bal)}.`
-        : `<strong>Coast FIRE number today (retire at ${ms.targetRetirementAge}):</strong> ${fmt$k(need)} — you're ${fmt$k(gap)} away.`;
-      // When the plan's own retirement age is already ≥ 65 the two collapse to
-      // the same thing — show one line rather than a confusing duplicate.
-      const ageLines = (ms.targetRetirementAge >= cl.targetRetirementAge)
-        ? own
-        : `${own}<br>${classic}`;
-      status = `${todayLine}<br>${ageLines}`;
+      status = ms.reached
+        ? 'Reached — contributions optional now'
+        : (ms.coastAge != null
+            ? `Projected around age <strong>${fmtAge(ms.coastAge)}</strong> for retirement at ${fmtAge(ms.targetRetirementAge)}`
+            : 'Not yet on this plan — keep contributing');
+      status += ' · <span class="coast-see">full detail below ↓</span>';
     } else {
       hit = ms.reachedByRetirement;
       status = ms.ageHit != null
@@ -1352,6 +1333,138 @@ function renderFire(m) {
       </div>
     </div>`;
   }).join('');
+}
+
+// Personalized age rows for the Coast FIRE path: current age, sensible 5-year
+// intervals, the projected Coast age, and the target retirement age. Deduped,
+// sorted, and clamped to [currentAge, retAge].
+function coastPathAges(currentAge, retAge, coastAge) {
+  const set = new Set();
+  const c = Math.round(currentAge), r = Math.round(retAge);
+  set.add(c);
+  for (let a = Math.ceil(c / 5) * 5; a < r; a += 5) set.add(a);
+  if (coastAge != null && coastAge > c && coastAge < r) set.add(Math.round(coastAge));
+  set.add(r);
+  return [...set].filter((a) => a >= c && a <= r).sort((x, y) => x - y);
+}
+
+// The full Coast FIRE experience: (1) Coast FIRE number today with a progress
+// bar, (2) projected Coast FIRE age, (3) the no-more-contributions outcome, and
+// (4) a personalized coast path. All figures are today's dollars at the real
+// return (calc surfaces numberToday / noContribBalanceAtRetirement / coastAge).
+function renderCoast(f, inputs) {
+  const el = $('coastFire');
+  if (!el) return;
+  const c = f.milestones.coast;
+  const target = f.fullFire;
+  const currentAge = inputs.youngestAge;
+  const retAge = c.targetRetirementAge;
+  const bal = c.currentBalance || 0;
+  const contrib = inputs.householdAnnual || 0;
+  const need = c.numberToday || 0;
+  const realR = c.coastReturn;
+
+  if (!(target > 0)) {
+    el.innerHTML = `<p class="coast-empty">Set your retirement spending in <a href="#" class="edit-in-goal-link" data-jump-tab="goal">Your Target</a> to calculate Coast FIRE.</p>`;
+    return;
+  }
+  const noInputs = bal <= 0 && contrib <= 0;
+
+  // ---- 1. Coast FIRE number today ----------------------------------------
+  const reachedToday = bal >= need && need > 0;
+  const pctRaw = need > 0 ? (bal / need) * 100 : 0;
+  const pctFill = Math.max(0, Math.min(100, pctRaw));
+  const gapToday = Math.abs(need - bal);
+  const answer1 = `
+    <div class="coast-answer">
+      <div class="coast-answer-head">
+        <span class="coast-label">Coast FIRE number today for retirement at ${fmtAge(retAge)}</span>
+        <span class="chip ${reachedToday ? 'chip-good' : 'chip-warn'}">${reachedToday ? '✓ Reached' : `${fmt$k(gapToday)} to go`}</span>
+      </div>
+      <p class="coast-sentence">You need <strong>${fmt$k(need)}</strong> invested today for it to grow to your FIRE target by age ${fmtAge(retAge)}, assuming no additional contributions.</p>
+      <div class="coast-bar" role="img" aria-label="Current invested ${fmt$k(bal)} of Coast FIRE number ${fmt$k(need)}, ${Math.round(pctRaw)} percent">
+        <div class="coast-bar-fill" style="width:${pctFill.toFixed(1)}%"></div>
+      </div>
+      <div class="coast-bar-legend">
+        <span>Invested now: <strong>${fmt$k(bal)}</strong></span>
+        <span>${Math.round(pctRaw)}% of ${fmt$k(need)}</span>
+      </div>
+      <p class="coast-help">${reachedToday
+        ? `You have reached Coast FIRE for age ${fmtAge(retAge)}.`
+        : `You are ${fmt$k(gapToday)} away from Coast FIRE for age ${fmtAge(retAge)}.`} Assumes no new contributions from today through retirement.</p>
+    </div>`;
+
+  // ---- 2. Projected Coast FIRE age ---------------------------------------
+  let answer2Body;
+  if (noInputs) {
+    answer2Body = `<p class="coast-sentence coast-muted">Add balances and contributions to calculate your projected Coast FIRE age.</p>`;
+  } else if (c.coastAge != null && c.coastAge <= currentAge) {
+    answer2Body = `<p class="coast-sentence">You have already reached Coast FIRE for retirement at age ${fmtAge(retAge)}.</p>`;
+  } else if (c.coastAge != null) {
+    answer2Body = `<p class="coast-sentence">At your current savings rate, you are projected to reach Coast FIRE at age <strong>${fmtAge(c.coastAge)}</strong>. At that point, you could stop contributing and the invested balance would still be projected to reach your FIRE target by age ${fmtAge(retAge)}.</p>`;
+  } else {
+    answer2Body = `<p class="coast-sentence">You are not projected to reach Coast FIRE before age ${fmtAge(retAge)} under the current assumptions.</p>`;
+  }
+  const answer2 = `
+    <div class="coast-answer">
+      <div class="coast-answer-head"><span class="coast-label">Projected Coast FIRE age</span></div>
+      ${answer2Body}
+      <p class="coast-help">This is the age contributions could become optional in the model.</p>
+    </div>`;
+
+  // ---- 3. If you stopped contributing today ------------------------------
+  const endBal = c.noContribBalanceAtRetirement || 0;
+  const diff = endBal - target;
+  const answer3 = `
+    <div class="coast-answer">
+      <div class="coast-answer-head"><span class="coast-label">If you stopped contributing today</span></div>
+      <p class="coast-sentence">Your current balance alone is projected to reach <strong>${fmt$k(endBal)}</strong> by age ${fmtAge(retAge)}, leaving a <span class="${diff >= 0 ? 'coast-pos' : 'coast-neg'}">${diff >= 0 ? `${fmt$k(diff)} surplus` : `${fmt$k(-diff)} gap`}</span> versus your FIRE target of ${fmt$k(target)}.</p>
+      <p class="coast-help">Contributions are set to $0; investment growth continues.</p>
+    </div>`;
+
+  // ---- 4. Coast path table -----------------------------------------------
+  let pathTable = '';
+  if (!noInputs) {
+    const ages = coastPathAges(currentAge, retAge, c.coastAge);
+    const rows = coastPath(bal, contrib, currentAge, retAge, realR, target, ages);
+    // Status is anchored to the canonical projected Coast age (a monthly-
+    // compounded figure) so the table agrees with the headline, rather than to
+    // the annually-discounted "required" column, which can differ by a hair.
+    const coastAgeR = c.coastAge != null ? Math.round(c.coastAge) : null;
+    const statusChip = (row) => {
+      if (coastAgeR == null || row.age < coastAgeR) return '<span class="chip chip-warn">Short</span>';
+      return row.age > coastAgeR
+        ? '<span class="chip chip-good">Ahead</span>'
+        : '<span class="chip chip-good">Reached</span>';
+    };
+    const labelAge = (a) => {
+      const tags = [];
+      if (Math.round(a) === Math.round(currentAge)) tags.push('now');
+      if (c.coastAge != null && Math.round(a) === Math.round(c.coastAge)) tags.push('coast');
+      if (Math.round(a) === Math.round(retAge)) tags.push('retire');
+      return `${fmtAge(a)}${tags.length ? ` <span class="coast-agetag">${tags.join(' · ')}</span>` : ''}`;
+    };
+    pathTable = `
+      <div class="coast-path">
+        <div class="coast-answer-head"><span class="coast-label">Your Coast FIRE path</span></div>
+        <div class="coast-table-wrap">
+          <table class="coast-table">
+            <thead><tr><th>Age</th><th>Projected balance</th><th>Required to coast</th><th>Status</th></tr></thead>
+            <tbody>
+              ${rows.map((row) => `<tr>
+                <td>${labelAge(row.age)}</td>
+                <td>${fmt$k(row.projected)}</td>
+                <td>${fmt$k(row.required)}</td>
+                <td>${statusChip(row)}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+        <p class="coast-help">The required Coast balance rises as retirement gets closer because there is less time to compound. “Projected” includes contributions up to that age; “required” is the balance needed at that age to stop contributing and still reach your FIRE target by retirement.</p>
+      </div>`;
+  }
+
+  el.innerHTML = answer1 + answer2 + answer3 + pathTable;
 }
 
 // Year-by-year projection table (item 3): age, balance, assumption range, and
@@ -1986,6 +2099,7 @@ function recompute() {
   renderProjectionTable(f);
   renderBalances(f);
   renderFire(f.milestones);
+  renderCoast(f, inputs);
   renderAudit(f, inputs);
   renderForecastFireBreakdown(f, inputs);
   updatePullGoalButtons();
