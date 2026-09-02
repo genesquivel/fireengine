@@ -18,6 +18,32 @@ const fmt$k = (n) => {
   if (abs >= 1000) return '$' + (n / 1000).toFixed(0) + 'k';
   return fmt$(n);
 };
+// Compact, consistent currency for CHART AXES only: $0, $500K, $1.5M, $2M,
+// $80M — at most one decimal (trailing zero trimmed), never over-precise like
+// $69.948M. Keep fmt$k (with its finer precision) for card readouts.
+const fmtAxis = (n) => {
+  if (!isFinite(n)) return '∞';
+  const abs = Math.abs(n), sign = n < 0 ? '-' : '';
+  if (abs >= 1e6) return `${sign}$${parseFloat((abs / 1e6).toFixed(1))}M`;
+  if (abs >= 1e3) return `${sign}$${parseFloat((abs / 1e3).toFixed(0))}K`;
+  return `${sign}$${Math.round(abs)}`;
+};
+// Round a value UP to a "nice" 1/2/5 × 10^n number, so axis ticks land on
+// round figures (and the plotted max never clips the top of the curve).
+const niceCeil = (x) => {
+  if (!(x > 0)) return 0;
+  const base = Math.pow(10, Math.floor(Math.log10(x)));
+  const f = x / base;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * base;
+};
+// Round y-axis over [0, rawMax]: a nice step and the smallest multiple of it
+// that covers the data. Ticks land on round figures; the top never clips.
+const niceAxis = (rawMax) => {
+  const m = Math.max(1, rawMax);
+  const yStep = niceCeil(m / 4) || 1;
+  const ySteps = Math.max(1, Math.ceil(m / yStep));
+  return { yStep, ySteps, yMax: yStep * ySteps };
+};
 const fmtYears = (n) => (isFinite(n) ? n.toFixed(0) : '∞');
 const fmtAge = (a) => (a == null ? '—' : a.toFixed(a % 1 ? 1 : 0));
 const fmtInput = (n) => Math.round(parseMoney(n)).toLocaleString('en-US');
@@ -319,8 +345,8 @@ function refreshLocation() {
     // Click handled by the single delegated [data-jump-tab] listener (see
     // wiring section) — no per-render listener needed here.
     $('locationFromGoal').innerHTML = (userLocation.matched
-      ? `Using ${userLocation.zip} · ${userLocation.city} from Goal Builder`
-      : `Using US national averages from Goal Builder (no ZIP entered)`) +
+      ? `Using ${userLocation.zip} · ${userLocation.city} from Your Target`
+      : `Using US national averages from Your Target (no ZIP entered)`) +
       ` · <a href="#" class="edit-in-goal-link" data-jump-tab="goal">change</a>`;
   }
   if (userLocation.zip !== prevZip) {
@@ -877,7 +903,7 @@ function formatMoneyInputs(root = document) {
 // figure only changes when the user clicks "Pull from Goal Builder".
 function pullDesiredFromGoalBuilder(btn) {
   const phases = goalPhases();
-  if (!phases.length) { showPullConfirm(btn, 'No spending phases entered in Goal Builder yet'); return; }
+  if (!phases.length) { showPullConfirm(btn, 'No spending phases entered in Your Target yet'); return; }
   const blended = Math.round(blendedDesiredIncome(phases));
   $('desired').value = blended;
   syncGoalDesiredInput();
@@ -1142,7 +1168,8 @@ function renderChart(f) {
   pess = deflateSeries(padToLength(pess, longest), inflPct);
 
   const xMin = base[0].age, xMax = base[base.length - 1].age;
-  const yMax = Math.max(1, ...opt.map((p) => p.balance), ...base.map((p) => p.balance)) * 1.05;
+  // Nice, round y-axis: clean tick labels ($20M, $40M…) and no top-of-curve clip.
+  const { yStep, ySteps, yMax } = niceAxis(Math.max(...opt.map((p) => p.balance), ...base.map((p) => p.balance)));
   const xspan = Math.max(1e-9, xMax - xMin);
 
   const X = (age) => ML + ((age - xMin) / xspan) * plotW;
@@ -1156,10 +1183,10 @@ function renderChart(f) {
 
   // Gridlines + y-axis ticks (dollar amounts).
   let grid = '', yticks = '';
-  for (let i = 0; i <= 4; i++) {
-    const val = (yMax / 4) * i, yy = Y(val);
+  for (let i = 0; i <= ySteps; i++) {
+    const val = yStep * i, yy = Y(val);
     grid += `<line class="chart-grid" x1="${ML}" y1="${yy.toFixed(1)}" x2="${W - MR}" y2="${yy.toFixed(1)}"/>`;
-    yticks += `<text class="chart-tick" x="${ML - 6}" y="${(yy + 3).toFixed(1)}" text-anchor="end">${fmt$k(val)}</text>`;
+    yticks += `<text class="chart-tick" x="${ML - 6}" y="${(yy + 3).toFixed(1)}" text-anchor="end">${fmtAxis(val)}</text>`;
   }
   // x-axis ticks (ages), roughly every 5 years.
   let xticks = '';
@@ -1263,11 +1290,20 @@ function renderFire(m) {
       const own = line(`your age ${ms.targetRetirementAge}`, ms.targetRetirementAge, ms.coastAge, ms.reached, ms.ageReached);
       const cl = ms.classic;
       const classic = line(`65 (classic)`, cl.targetRetirementAge, cl.coastAge, cl.reached, cl.ageReached);
+      // Coast FIRE number today: the balance needed right now to coast (no more
+      // contributions) to the Full FIRE target by the chosen retirement age,
+      // discounted at the REAL return. Show current-vs-required with a gap.
+      const bal = ms.currentBalance || 0, need = ms.numberToday || 0;
+      const gap = Math.max(0, need - bal);
+      const todayLine = bal >= need
+        ? `<strong>Coast FIRE number today (retire at ${ms.targetRetirementAge}):</strong> ${fmt$k(need)} — reached, you have ${fmt$k(bal)}.`
+        : `<strong>Coast FIRE number today (retire at ${ms.targetRetirementAge}):</strong> ${fmt$k(need)} — you're ${fmt$k(gap)} away.`;
       // When the plan's own retirement age is already ≥ 65 the two collapse to
       // the same thing — show one line rather than a confusing duplicate.
-      status = (ms.targetRetirementAge >= cl.targetRetirementAge)
+      const ageLines = (ms.targetRetirementAge >= cl.targetRetirementAge)
         ? own
         : `${own}<br>${classic}`;
+      status = `${todayLine}<br>${ageLines}`;
     } else {
       hit = ms.reachedByRetirement;
       status = ms.ageHit != null
@@ -1277,7 +1313,7 @@ function renderFire(m) {
     const wr = num('withdrawalRate');
     let calc;
     if (name === 'Coast FIRE') {
-      calc = `Tests whether your CURRENT balance, with zero further contributions, would compound (at the base return) to the Full FIRE target by a given age.\n"Coast to ${ms.targetRetirementAge}" uses your own retirement age; "Coast to 65" uses the traditional age. A longer runway (to 65) needs less in hand today, so it's usually reached earlier.`;
+      calc = `Coast FIRE works in today's dollars, so it compounds at the REAL return — growth after inflation = (1 + return) / (1 + inflation) − 1 — not the raw return.\nCoast FIRE number today = Full FIRE target ÷ (1 + real return)^(retirement age − your age): the balance that, with zero further contributions, grows into the target by retirement.\n"Coast to ${ms.targetRetirementAge}" uses your own retirement age; "Coast to 65" uses the traditional age. A longer runway (to 65) needs less in hand today, so it's usually reached earlier.`;
     } else if (ms.target) {
       const impliedSpend = ms.target * (wr / 100);
       calc = `Target = annual spend ÷ withdrawal rate (${fmt$(impliedSpend)} ÷ ${wr.toFixed(1)}%) = ${fmt$k(ms.target)}.\n` +
@@ -1941,9 +1977,9 @@ function updatePullGoalButtons() {
   const blended = phases.length ? Math.round(blendedDesiredIncome(phases)) : null;
   document.querySelectorAll('.pull-goal-btn').forEach((b) => {
     b.textContent = blended != null
-      ? `⬇ Use Goal Builder spending: ${fmt$(blended)}/yr`
-      : '⬇ Use Goal Builder spending';
-    b.title = 'Sets your target income to the duration-weighted average of the spending phases you mapped in Goal Builder.';
+      ? `⬇ Use Your Target spending: ${fmt$(blended)}/yr`
+      : '⬇ Use Your Target spending';
+    b.title = 'Sets your target income to the duration-weighted average of the spending phases you mapped in Your Target.';
   });
 }
 
@@ -2323,17 +2359,17 @@ function renderGoalTimeline(f, inputs) {
   });
   const W = 800, H = 320, ML = 60, MR = 16, MT = 16, MB = 34;
   const plotW = W - ML - MR, plotH = H - MT - MB;
-  const yMax = Math.max(1, ...rows.map((r) => r.total)) * 1.05;
+  const { yStep, ySteps, yMax } = niceAxis(Math.max(...rows.map((r) => r.total)));
   const n = rows.length;
   const bw = Math.max(1, plotW / n * 0.8);
   const X = (i) => ML + (i + 0.5) * (plotW / n);
   const Y = (v) => MT + (1 - v / yMax) * plotH;
 
   let grid = '', yticks = '';
-  for (let i = 0; i <= 4; i++) {
-    const val = (yMax / 4) * i, yy = Y(val);
+  for (let i = 0; i <= ySteps; i++) {
+    const val = yStep * i, yy = Y(val);
     grid += `<line class="chart-grid" x1="${ML}" y1="${yy.toFixed(1)}" x2="${W - MR}" y2="${yy.toFixed(1)}"/>`;
-    yticks += `<text class="chart-tick" x="${ML - 6}" y="${(yy + 3).toFixed(1)}" text-anchor="end">${fmt$k(val)}</text>`;
+    yticks += `<text class="chart-tick" x="${ML - 6}" y="${(yy + 3).toFixed(1)}" text-anchor="end">${fmtAxis(val)}</text>`;
   }
   let bars = '';
   rows.forEach((r, i) => {
@@ -2564,7 +2600,7 @@ function computeFireCards(f, inputs) {
     `Full FIRE Target = ${hasPhases ? 'phase-blended spending' : 'desired income'} ÷ withdrawal rate (${fmt$(liveIncome)} ÷ ${withdrawalRate.toFixed(1)}%) = ${fmt$k(baseTarget)} (same live figure as the "Full FIRE" card above).\n` +
     `Portfolio equivalent of SS at age ${ssAge} = Social Security ÷ withdrawal rate (${fmt$(ssAnnual)} ÷ ${withdrawalRate.toFixed(1)}%) = ${fmt$k(ssPortfolioEquivalent)}.\n` +
     `Present value of that SS benefit today, discounted ${bridgeYears.toFixed(1)} years at ${withdrawalRate.toFixed(1)}% (the withdrawal rate, used as a conservative proxy for the real investment-growth/discount rate) = ${fmt$k(ssPortfolioEquivalent)} ÷ (1 + ${withdrawalRate.toFixed(1)}%)^${bridgeYears.toFixed(1)} = ${fmt$k(presentValueOfSS)}.\n` +
-    `Net Target = Full FIRE − PV of SS = ${fmt$k(baseTarget)} − ${fmt$k(presentValueOfSS)} = ${fmt$k(netOfSS)}.`]);
+    `Net Target = Full FIRE − present value of Social Security = ${fmt$k(baseTarget)} − ${fmt$k(presentValueOfSS)} = ${fmt$k(netOfSS)}.`]);
   // All-in FIRE — the REAL number, built from a modeled drawdown of just what's
   // on THIS tab (targetDrawdownSeries) instead of a flat 25x on stated spending.
   // Bakes in the healthcare transition (ACA pre-65 → Medicare AT AGE 65, evaluated
@@ -2602,7 +2638,7 @@ function computeFireCards(f, inputs) {
     cards.push(['All-in FIRE', fmt$k(compTarget), `avg. all-in spend: ${fmt$(Math.round(avgRealSpend))}/yr (today's $)`,
       `Average all-in annual cost (today's $) = ${fmt$(Math.round(avgRealSpend))}/yr — base spending, healthcare, lifecycle costs, and taxes, averaged across all ${series.length} years of retirement.\n` +
       `All-in FIRE = average cost ÷ withdrawal rate (${fmt$(Math.round(avgRealSpend))} ÷ ${withdrawalRate.toFixed(1)}%) = ${fmt$k(compTarget)}.`]);
-    cards.push(['All-in FIRE (net of SS)', fmt$k(compTargetNetSS), `${fmt$k(compTarget)} − ${fmt$k(presentValueOfSS)} PV of SS`,
+    cards.push(['All-in FIRE (net of SS)', fmt$k(compTargetNetSS), `${fmt$k(compTarget)} − ${fmt$k(presentValueOfSS)} present value of Social Security`,
       `Same All-in FIRE as above, reduced by the same Present Value of Social Security used in "Full FIRE (net of SS)" (assumes claiming at age ${ssAge}).\n` +
       `Net Target = ${fmt$k(compTarget)} − ${fmt$k(presentValueOfSS)} = ${fmt$k(compTargetNetSS)}.`]);
   }
@@ -2800,16 +2836,16 @@ function renderScenarioChart(baseSeries, impSeries, inputs, events) {
   const plotW = W - ML - MR, plotH = H - MT - MB;
   const allAges = baseD.concat(impD);
   const xMin = Math.min(...allAges.map((p) => p.age)), xMax = Math.max(...allAges.map((p) => p.age));
-  const yMax = Math.max(1, ...allAges.map((p) => p.balance)) * 1.05;
+  const { yStep, ySteps, yMax } = niceAxis(Math.max(...allAges.map((p) => p.balance)));
   const xspan = Math.max(1e-9, xMax - xMin);
   const X = (age) => ML + ((age - xMin) / xspan) * plotW;
   const Y = (bal) => MT + (1 - Math.max(0, bal) / yMax) * plotH;
   const path = (pts) => pts.map((p, i) => `${i ? 'L' : 'M'}${X(p.age).toFixed(1)},${Y(p.balance).toFixed(1)}`).join(' ');
   let grid = '', yticks = '';
-  for (let i = 0; i <= 4; i++) {
-    const val = (yMax / 4) * i, yy = Y(val);
+  for (let i = 0; i <= ySteps; i++) {
+    const val = yStep * i, yy = Y(val);
     grid += `<line class="chart-grid" x1="${ML}" y1="${yy.toFixed(1)}" x2="${W - MR}" y2="${yy.toFixed(1)}"/>`;
-    yticks += `<text class="chart-tick" x="${ML - 6}" y="${(yy + 3).toFixed(1)}" text-anchor="end">${fmt$k(val)}</text>`;
+    yticks += `<text class="chart-tick" x="${ML - 6}" y="${(yy + 3).toFixed(1)}" text-anchor="end">${fmtAxis(val)}</text>`;
   }
   let xticks = '';
   const step = Math.max(1, Math.round((xMax - xMin) / 6 / 5) * 5);
@@ -3038,16 +3074,16 @@ function renderDebtChart(stdSchedule, accSchedule) {
   const W = 760, H = 300, ML = 64, MR = 16, MT = 14, MB = 28;
   const plotW = W - ML - MR, plotH = H - MT - MB;
   const maxMonths = Math.max(stdSchedule.length, accSchedule.length) - 1;
-  const yMax = Math.max(stdSchedule[0].balance, 1) * 1.02;
+  const { yStep, ySteps, yMax } = niceAxis(stdSchedule[0].balance);
   const X = (mi) => ML + (mi / Math.max(1, maxMonths)) * plotW;
   const Y = (b) => MT + (1 - b / yMax) * plotH;
   const path = (s) => s.map((p, i) => `${i ? 'L' : 'M'}${X(p.monthIndex).toFixed(1)},${Y(p.balance).toFixed(1)}`).join(' ');
 
   let grid = '', yticks = '';
-  for (let i = 0; i <= 4; i++) {
-    const val = (yMax / 4) * i, yy = Y(val);
+  for (let i = 0; i <= ySteps; i++) {
+    const val = yStep * i, yy = Y(val);
     grid += `<line class="chart-grid" x1="${ML}" y1="${yy.toFixed(1)}" x2="${W - MR}" y2="${yy.toFixed(1)}"/>`;
-    yticks += `<text class="chart-tick" x="${ML - 6}" y="${(yy + 3).toFixed(1)}" text-anchor="end">${fmt$k(val)}</text>`;
+    yticks += `<text class="chart-tick" x="${ML - 6}" y="${(yy + 3).toFixed(1)}" text-anchor="end">${fmtAxis(val)}</text>`;
   }
   let xticks = '';
   const maxYears = maxMonths / 12;
@@ -3948,7 +3984,7 @@ function wizGoalFinish() {
   recompute();
   switchTab('goal');
   saveState();
-  flashStatus('Goal Builder is ready ✓');
+  flashStatus('Your Target is ready ✓');
 }
 
 function openWizard(prefill) {
@@ -4064,7 +4100,9 @@ function wizFinish() {
 $('wizStartBtn').addEventListener('click', () => wizShow(2));
 // Skip / close: leave the wizard at any time, persisting current state so we
 // don't nag on reload. Both land the user on the dashboard (Goal Builder).
-const wizDismiss = () => { closeWizard(); saveState(); };
+// Skipping loads the starter assumptions — say exactly that (never imply the
+// user saved anything they didn't enter).
+const wizDismiss = () => { closeWizard(); saveState(); flashStatus('Using starter assumptions — edit anytime'); };
 $('wizSkipBtn').addEventListener('click', wizDismiss);
 if ($('wizCloseBtn')) $('wizCloseBtn').addEventListener('click', wizDismiss);
 $('wizNextBtn').addEventListener('click', wizNext);

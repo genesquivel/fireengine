@@ -145,6 +145,57 @@
   const fLate = forecast(Object.assign({}, coastInputs, { yearsToRetirement: 31 })); // retire at 67
   ok('coast.classic clamps to retirement age when ≥ 65', fLate.milestones.coast.classic.targetRetirementAge === 67, String(fLate.milestones.coast.classic.targetRetirementAge));
 
+  // ---- Coast FIRE: real-vs-nominal correctness (today's-dollar target) ----
+  // realReturn = (1+nominal)/(1+inflation) - 1. Zero inflation → nominal.
+  eqApprox('realReturn: zero inflation = nominal', realReturn(7, 0), 7, 1e-9);
+  eqApprox('realReturn: 7% nominal, 3% inflation ≈ 3.883%', realReturn(7, 3), ((1.07 / 1.03) - 1) * 100, 1e-6);
+
+  // coastNumberToday: zero real return needs the whole target now; positive
+  // real return needs less; and the requirement rises as retirement nears.
+  ok('coastNumberToday: zero return = target', coastNumberToday(2000000, 36, 65, 0) === 2000000);
+  ok('coastNumberToday: positive return needs less today', coastNumberToday(2000000, 36, 65, 5) < 2000000);
+  ok('coastNumberToday: zero years = target', coastNumberToday(2000000, 65, 65, 5) === 2000000);
+  ok('coastNumberToday: required rises toward retirement',
+     coastNumberToday(2000000, 55, 65, 5) > coastNumberToday(2000000, 36, 65, 5));
+
+  // Required edge cases (direct engine calls, real return, today's-$ target):
+  const real7_3 = realReturn(7, 3);
+  ok('coast edge: already coasting = currentAge', ageCoastFireReached(2000000, 0, 36, 65, real7_3, 2000000) === 36);
+  const reachLater = ageCoastFireReached(300000, 60000, 36, 65, real7_3, 2000000);
+  ok('coast edge: reaches coast at a later age', reachLater != null && reachLater > 36 && reachLater <= 65, String(reachLater));
+  ok('coast edge: never reaches before retirement = null', ageCoastFireReached(1000, 0, 36, 65, real7_3, 2000000) === null);
+  // Zero real return: growth alone never coasts; contributions must hit the target.
+  ok('coast edge: zero return reaches via contributions at 41', ageCoastFireReached(1500000, 100000, 36, 65, 0, 2000000) === 41);
+  ok('coast edge: zero return, no contrib, below target = null', ageCoastFireReached(1500000, 0, 36, 65, 0, 2000000) === null);
+
+  // Nominal-vs-real consistency: inflation makes coast strictly harder.
+  const inNo = Object.assign({}, coastInputs, { yearsToRetirement: 29, desiredAnnualIncome: 80000, householdBalance: 300000, householdAnnual: 60000, baseInflation: 0 });
+  const inInf = Object.assign({}, inNo, { baseInflation: 3 });
+  const fNo = forecast(inNo), fInf = forecast(inInf);
+  ok('coast: inflation raises the Coast FIRE number today',
+     fInf.milestones.coast.numberToday > fNo.milestones.coast.numberToday,
+     `${Math.round(fInf.milestones.coast.numberToday)} vs ${Math.round(fNo.milestones.coast.numberToday)}`);
+  const aNo = fNo.milestones.coast.coastAge, aInf = fInf.milestones.coast.coastAge;
+  ok('coast: inflation delays (or removes) the projected Coast age',
+     aInf == null || (aNo != null && aInf >= aNo), `infl ${aInf} vs no-infl ${aNo}`);
+  ok('coast: base coastReturn = realReturn(nominal, inflation)',
+     approx(fInf.milestones.coast.coastReturn, realReturn(fInf.scenarios.base.return, fInf.scenarios.base.inflation), 1e-9));
+
+  // Couple scenario: coast object is well-formed for a two-person household.
+  const coupleIn = Object.assign({}, inInf, { persons: 2, filingStatus: 'mfj', socialSecurityAnnual: 40000 });
+  const fCouple = forecast(coupleIn);
+  ok('coast (couple): numberToday positive and finite',
+     fCouple.milestones.coast.numberToday > 0 && isFinite(fCouple.milestones.coast.numberToday));
+  ok('coast (couple): no-contribution outcome ≥ current balance',
+     fCouple.milestones.coast.noContribBalanceAtRetirement >= fCouple.milestones.coast.currentBalance);
+
+  // coastPath: required rises with age, projected rises with age, ends at target.
+  const cpath = coastPath(300000, 60000, 36, 65, real7_3, 2000000, [36, 45, 55, 65]);
+  ok('coastPath: required rises as retirement nears',
+     cpath[0].required < cpath[1].required && cpath[1].required < cpath[2].required && cpath[2].required < cpath[3].required);
+  ok('coastPath: projected grows with age', cpath[0].projected < cpath[3].projected);
+  ok('coastPath: final row requires the full target', approx(cpath[3].required, 2000000, 0.01));
+
   // ---- Barista → Full FIRE coast time ----
   // Already at/above Full FIRE → 0 years.
   ok('baristaToFull: already full = 0', yearsFromBaristaToFull(2500000, 100000, 4, 7) === 0);
