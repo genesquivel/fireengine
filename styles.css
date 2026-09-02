@@ -687,6 +687,23 @@ body.wiz-open { overflow: hidden; }
 .wiz-btn-primary:disabled { background: #c7c4ee; cursor: not-allowed; }
 .wiz-btn-ghost { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
 .wiz-btn-ghost:hover { background: #eceef7; }
+.wiz-btn-link { background: none; border: none; color: var(--muted); text-decoration: underline; padding: 8px; min-height: 40px; }
+.wiz-btn-link:hover { color: var(--text); }
+
+/* Completion / results screen */
+.wiz-result { margin: 4px 0 20px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.wiz-result-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-top: 1px solid var(--border); font-size: 14px; }
+.wiz-result-row:first-child { border-top: none; }
+.wiz-result-row span { color: var(--muted); }
+.wiz-result-row strong { font-size: 16px; }
+
+/* Inline field error + ZIP feedback */
+.wiz-field input.wiz-bad { border-color: var(--bad); background: rgba(224,67,107,.05); }
+.wiz-help.wiz-zip-ok { color: var(--good); font-style: normal; font-weight: 600; }
+.wiz-help.wiz-zip-bad { color: var(--warn); font-style: normal; }
+
+/* Compact modal (re-run confirm) */
+.wizard-modal-sm { max-width: 420px; }
 
 /* Error banner */
 .wizard-error {

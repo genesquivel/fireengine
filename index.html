@@ -576,146 +576,87 @@
           </div>
         </section>
 
-        <!-- STEP 2 — FIRE target -->
+        <!-- STEP 2 — Household -->
         <section class="wizard-step hidden" data-step="2">
-          <h2 class="wizard-title">Do you know your FIRE number?</h2>
-          <p class="wizard-sub">If you already know the annual retirement income you want, Quick Setup can use it. If not, Your Target will help you shape it first.</p>
-          <div class="wiz-choice-group" id="wizFireChoice">
-            <button type="button" class="wiz-choice" data-fireknown="yes">Yes, I know it</button>
-            <button type="button" class="wiz-choice" data-fireknown="no">Not yet</button>
-          </div>
-        </section>
-
-        <!-- STEP 3 — Household -->
-        <section class="wizard-step hidden" data-step="3">
           <h2 class="wizard-title">Who are we planning for?</h2>
-          <p class="wizard-sub">This sets up one or two people in your forecast.</p>
-          <div class="wiz-choice-group" id="wizHouseholdChoice">
-            <button type="button" class="wiz-choice active" data-household="single">Single</button>
+          <p class="wiz-help">Choose one person or a household plan.</p>
+          <div class="wiz-choice-group" id="wizHouseholdChoice" role="group" aria-label="Household type">
+            <button type="button" class="wiz-choice active" data-household="single">One person</button>
             <button type="button" class="wiz-choice" data-household="couple">Couple</button>
           </div>
-          <div class="wiz-field">
-            <label for="wizAgeA">Your current age <span class="wiz-req">*</span></label>
-            <input type="text" inputmode="numeric" id="wizAgeA" data-nostate placeholder="35">
-          </div>
-          <div class="wiz-field wiz-couple-only hidden">
-            <label for="wizAgeB">Partner's current age <span class="wiz-req">*</span></label>
-            <input type="text" inputmode="numeric" id="wizAgeB" data-nostate placeholder="36">
+          <div class="wiz-grid">
+            <div class="wiz-field">
+              <label for="wizAgeA">Your current age <span class="wiz-req">*</span></label>
+              <input type="text" inputmode="numeric" id="wizAgeA" data-nostate placeholder="35">
+              <p class="wiz-help">Use your age today.</p>
+            </div>
+            <div class="wiz-field">
+              <label for="wizRetA">Desired retirement age <span class="wiz-req">*</span></label>
+              <input type="text" inputmode="numeric" id="wizRetA" data-nostate placeholder="50">
+              <p class="wiz-help">This is your goal age, not a prediction.</p>
+            </div>
+            <div class="wiz-field wiz-couple-only hidden">
+              <label for="wizAgeB">Partner&#39;s current age <span class="wiz-req">*</span></label>
+              <input type="text" inputmode="numeric" id="wizAgeB" data-nostate placeholder="36">
+            </div>
+            <div class="wiz-field wiz-couple-only hidden">
+              <label for="wizRetB">Partner&#39;s retirement age <span class="wiz-req">*</span></label>
+              <input type="text" inputmode="numeric" id="wizRetB" data-nostate placeholder="50">
+            </div>
           </div>
         </section>
 
-        <!-- STEP 4 — Timeline -->
+        <!-- STEP 3 — Location -->
+        <section class="wizard-step hidden" data-step="3">
+          <h2 class="wizard-title">Where do you live?</h2>
+          <p class="wiz-help">Used for location-based healthcare and cost estimates.</p>
+          <div class="wiz-field">
+            <label for="wizZip">ZIP code</label>
+            <input type="text" inputmode="numeric" id="wizZip" data-nostate placeholder="e.g. 75068" maxlength="5">
+            <p class="wiz-help" id="wizZipResult">Your ZIP code stays in this browser and is not sent to an account.</p>
+          </div>
+        </section>
+
+        <!-- STEP 4 — Retirement spending -->
         <section class="wizard-step hidden" data-step="4">
-          <h2 class="wizard-title">When do you want to retire?</h2>
-          <p class="wizard-sub">The age you'd like to stop working full-time.</p>
-          <div class="wiz-field">
-            <label for="wizRetA">Your desired retirement age <span class="wiz-req">*</span></label>
-            <input type="text" inputmode="numeric" id="wizRetA" data-nostate placeholder="50">
+          <h2 class="wizard-title">How much do you want to spend each year in retirement?</h2>
+          <p class="wiz-help">Enter today&#39;s dollars. We handle inflation in the projection.</p>
+          <div class="wiz-choice-group" id="wizSpendTier" role="group" aria-label="Spending preset">
+            <button type="button" class="wiz-choice" data-tier="lean">Lean</button>
+            <button type="button" class="wiz-choice active" data-tier="base">Base</button>
+            <button type="button" class="wiz-choice" data-tier="fat">Fat</button>
           </div>
-          <div class="wiz-field wiz-couple-only hidden">
-            <label for="wizRetB">Partner's desired retirement age <span class="wiz-req">*</span></label>
-            <input type="text" inputmode="numeric" id="wizRetB" data-nostate placeholder="50">
+          <div class="wiz-field">
+            <label for="wizSpend">Annual retirement spending ($/yr) <span class="wiz-req">*</span></label>
+            <input type="text" inputmode="decimal" id="wizSpend" data-nostate placeholder="$65,000">
+            <p class="wiz-help">Pick a preset to start, then adjust the amount to match your plan.</p>
           </div>
         </section>
 
-        <!-- STEP 5 — Assets -->
+        <!-- STEP 5 — Savings -->
         <section class="wizard-step hidden" data-step="5">
           <h2 class="wizard-title">What have you saved so far?</h2>
-          <p class="wizard-sub">Optional — leave blank and we'll start you at $0. You can add detailed accounts later.</p>
-          <div class="wiz-choice-group" id="wizAssetChoice">
-            <button type="button" class="wiz-choice active" data-assetmode="single">Single total</button>
-            <button type="button" class="wiz-choice" data-assetmode="breakdown">Breakdown by type</button>
-          </div>
-          <div id="wizAssetSingle">
+          <p class="wiz-help">Add balances and yearly contributions to estimate your timeline.</p>
+          <div class="wiz-grid">
             <div class="wiz-field">
               <label for="wizTotalSavings">Total current savings ($)</label>
               <input type="text" inputmode="decimal" id="wizTotalSavings" data-nostate placeholder="$250,000">
             </div>
-          </div>
-          <div id="wizAssetBreakdown" class="hidden">
-            <div class="wiz-grid">
-              <div class="wiz-field"><label for="wizPretax">Pre-tax (401k/IRA) ($)</label><input type="text" inputmode="decimal" id="wizPretax" data-nostate placeholder="$120,000"></div>
-              <div class="wiz-field"><label for="wizRoth">Roth ($)</label><input type="text" inputmode="decimal" id="wizRoth" data-nostate placeholder="$40,000"></div>
-              <div class="wiz-field"><label for="wizHSA">HSA ($)</label><input type="text" inputmode="decimal" id="wizHSA" data-nostate placeholder="$10,000"></div>
-              <div class="wiz-field"><label for="wiz457">457(b) ($)</label><input type="text" inputmode="decimal" id="wiz457" data-nostate placeholder="$0"></div>
-              <div class="wiz-field"><label for="wizTaxable">Taxable / brokerage ($)</label><input type="text" inputmode="decimal" id="wizTaxable" data-nostate placeholder="$50,000"></div>
-              <div class="wiz-field"><label for="wizPension">Future annual pension ($/yr)</label><input type="text" inputmode="decimal" id="wizPension" data-nostate placeholder="$0"></div>
+            <div class="wiz-field">
+              <label for="wizContributions">Annual contributions ($/yr)</label>
+              <input type="text" inputmode="decimal" id="wizContributions" data-nostate placeholder="$30,000">
             </div>
           </div>
+          <p class="wiz-help">You can set your FIRE target now and add accounts later.</p>
         </section>
 
-        <!-- STEP 6 — Savings rate -->
+        <!-- STEP 6 — Completion -->
         <section class="wizard-step hidden" data-step="6">
-          <h2 class="wizard-title">How much are you saving?</h2>
-          <p class="wizard-sub">Optional — total you contribute across all accounts each year. Leave blank for $0.</p>
-          <div class="wiz-field">
-            <label for="wizContributions">Total annual contributions ($/yr)</label>
-            <input type="text" inputmode="decimal" id="wizContributions" data-nostate placeholder="$50,000">
-          </div>
-        </section>
-
-        <!-- STEP 7 — Target -->
-        <section class="wizard-step hidden" data-step="7">
-          <h2 class="wizard-title">What's your retirement target?</h2>
-          <p class="wizard-sub">The annual income you'd like to spend once retired.</p>
-          <div class="wiz-field">
-            <label for="wizDesired">Desired annual income in retirement ($/yr) <span class="wiz-req">*</span></label>
-            <input type="text" inputmode="decimal" id="wizDesired" data-nostate placeholder="$80,000">
-          </div>
-          <div class="wiz-field">
-            <label for="wizHealthcare">Estimated annual pre-65 healthcare cost ($/yr)</label>
-            <input type="text" inputmode="decimal" id="wizHealthcare" data-nostate placeholder="$12,000">
-            <p class="wiz-help">Rec: $6k–$8k/yr (Single) or $12k–$15k/yr (Couple).</p>
-          </div>
-        </section>
-
-        <!-- ============ GOAL BUILDER TRACK (when "Not yet" on FIRE number) ============ -->
-        <!-- GOAL STEP 1 — Household & timeline -->
-        <section class="wizard-step hidden" data-goalstep="1">
-          <h2 class="wizard-title">Let's shape your goal</h2>
-          <p class="wizard-sub">No worries if you don't know your number yet — that's exactly what Your Target is for. First, who are we planning for?</p>
-          <div class="wiz-choice-group" id="wizGoalHouseholdChoice">
-            <button type="button" class="wiz-choice active" data-ghousehold="single">Single</button>
-            <button type="button" class="wiz-choice" data-ghousehold="couple">Couple</button>
-          </div>
-          <div class="wiz-grid">
-            <div class="wiz-field">
-              <label for="wizGoalAgeA">Your current age <span class="wiz-req">*</span></label>
-              <input type="text" inputmode="numeric" id="wizGoalAgeA" data-nostate placeholder="35">
-            </div>
-            <div class="wiz-field">
-              <label for="wizGoalRetA">Desired retirement age <span class="wiz-req">*</span></label>
-              <input type="text" inputmode="numeric" id="wizGoalRetA" data-nostate placeholder="50">
-            </div>
-            <div class="wiz-field wiz-gcouple-only hidden">
-              <label for="wizGoalAgeB">Partner's current age <span class="wiz-req">*</span></label>
-              <input type="text" inputmode="numeric" id="wizGoalAgeB" data-nostate placeholder="36">
-            </div>
-            <div class="wiz-field wiz-gcouple-only hidden">
-              <label for="wizGoalRetB">Partner's retirement age <span class="wiz-req">*</span></label>
-              <input type="text" inputmode="numeric" id="wizGoalRetB" data-nostate placeholder="50">
-            </div>
-          </div>
-        </section>
-
-        <!-- GOAL STEP 2 — Spending -->
-        <section class="wizard-step hidden" data-goalstep="2">
-          <h2 class="wizard-title">What would you like to spend each year?</h2>
-          <p class="wizard-sub">Your best estimate of yearly living costs in retirement, in today's dollars. You can fine-tune it later — even split it into life-stage phases.</p>
-          <div class="wiz-field">
-            <label for="wizGoalSpend">Annual retirement spending ($/yr) <span class="wiz-req">*</span></label>
-            <input type="text" inputmode="decimal" id="wizGoalSpend" data-nostate placeholder="$80,000">
-            <p class="wiz-help">Not sure? Many households land around 70–85% of their pre-retirement spending.</p>
-          </div>
-        </section>
-
-        <!-- GOAL STEP 3 — Healthcare / household size -->
-        <section class="wizard-step hidden" data-goalstep="3">
-          <h2 class="wizard-title">A few people to cover?</h2>
-          <p class="wizard-sub">Household size helps Your Target estimate pre-65 healthcare and Medicare at 65. You can refine the details later.</p>
-          <div class="wiz-field">
-            <label for="wizGoalHouseholdSize">People in your household</label>
-            <input type="text" inputmode="numeric" id="wizGoalHouseholdSize" data-nostate placeholder="2">
+          <div class="wiz-flame" aria-hidden="true">🎉</div>
+          <h2 class="wizard-title">Your plan is ready</h2>
+          <div class="wiz-result" id="wizResult"></div>
+          <div class="wiz-welcome-actions">
+            <button type="button" class="wiz-btn wiz-btn-primary wiz-btn-lg" id="wizViewTimelineBtn">View your timeline</button>
           </div>
         </section>
       </div>
@@ -725,7 +666,21 @@
       <div class="wizard-nav" id="wizNav">
         <button type="button" class="wiz-btn wiz-btn-ghost" id="wizBackBtn">Back</button>
         <span class="wiz-step-count" id="wizStepCount"></span>
-        <button type="button" class="wiz-btn wiz-btn-primary" id="wizNextBtn">Next</button>
+        <button type="button" class="wiz-btn wiz-btn-link hidden" id="wizSkipStepBtn">Skip for now</button>
+        <button type="button" class="wiz-btn wiz-btn-primary" id="wizNextBtn">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Re-run setup confirmation -->
+  <div id="wizRerunConfirm" class="wizard-overlay hidden" aria-hidden="true">
+    <div class="wizard-modal wizard-modal-sm" role="dialog" aria-modal="true" aria-labelledby="rerunTitle">
+      <h2 class="wizard-title" id="rerunTitle">Start setup again?</h2>
+      <p class="wizard-sub">Choose what to reset. This cannot be undone after you confirm.</p>
+      <div class="wiz-welcome-actions">
+        <button type="button" class="wiz-btn wiz-btn-primary wiz-btn-lg" id="rerunKeepBtn">Keep accounts and reset target</button>
+        <button type="button" class="wiz-btn wiz-btn-ghost wiz-btn-lg" id="rerunResetBtn">Reset everything</button>
+        <button type="button" class="wiz-btn wiz-btn-link" id="rerunCancelBtn">Cancel</button>
       </div>
     </div>
   </div>
