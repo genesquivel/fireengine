@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=1024" />
+  <title>The FIRE Engine — Retirement Forecaster</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="apple-touch-icon" href="favicon.svg" />
+  <link rel="stylesheet" href="styles.css?v=77" />
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <svg class="brand-logo" viewBox="0 0 56 56" width="46" height="46" role="img" aria-label="The FIRE Engine logo">
+        <defs>
+          <linearGradient id="fe-grad" x1="0" y1="1" x2="1" y2="0">
+            <stop offset="0" stop-color="#4b3fe4"/>
+            <stop offset="0.5" stop-color="#7c3aed"/>
+            <stop offset="1" stop-color="#f97316"/>
+          </linearGradient>
+          <radialGradient id="fe-glow" cx="0.5" cy="0.62" r="0.55">
+            <stop offset="0" stop-color="#fde68a"/>
+            <stop offset="1" stop-color="#f97316" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <rect x="3" y="3" width="50" height="50" rx="15" fill="url(#fe-grad)"/>
+        <!-- gauge ticks (the "engine") -->
+        <g class="fe-ticks" stroke="#ffffff" stroke-opacity="0.35" stroke-width="1.6" stroke-linecap="round">
+          <line x1="12" y1="20" x2="14.5" y2="22.5"/>
+          <line x1="44" y1="20" x2="41.5" y2="22.5"/>
+          <line x1="9" y1="33" x2="12.5" y2="33"/>
+          <line x1="47" y1="33" x2="43.5" y2="33"/>
+        </g>
+        <ellipse class="fe-halo" cx="28" cy="36" rx="13" ry="15" fill="url(#fe-glow)"/>
+        <!-- flame -->
+        <path class="fe-flame" d="M28 11 C 31 21, 40 25, 37 36 C 35 43, 31 46.5 28 46.5 C 25 46.5, 19 43, 18.5 35.5 C 18 29, 22.5 26, 22.5 26 C 21.5 31.5, 26 33, 24 27.5 C 22 20, 28 17.5, 28 11 Z" fill="#ffffff"/>
+        <!-- inner flame -->
+        <path class="fe-core" d="M28 27 C 30 32, 33 34, 31 39 C 30 42, 28.5 44, 28 44 C 27 43.5, 25 42, 25.5 38.5 C 26 35.5, 28 35, 28 35 C 27.5 38, 29 38, 28 34 C 27.5 31, 28 29.5 28 27 Z" fill="#fbbf24"/>
+      </svg>
+      <h1>The FIRE Engine</h1>
+      <button type="button" id="rerunWizardBtn" class="rerun-wizard">↻ Re-run Quick Setup</button>
+    </div>
+    <p>Project your retirement, see your FIRE milestones, and adjust the levers in real time. Ranges show a band of <em>assumptions</em>, not probabilities.</p>
+    <nav class="tabs">
+      <button type="button" class="tab active" data-tab="goal">Goal Builder</button>
+      <button type="button" class="tab" data-tab="forecast">FIRE Forecast</button>
+      <button type="button" class="tab" data-tab="scenario">Scenario Playground</button>
+      <button type="button" class="tab" data-tab="debt">Debt Destroyer</button>
+      <button type="button" class="tab" data-tab="hustle">Path to Independence <span class="in-progress-badge">In Progress</span></button>
+      <button type="button" class="tab" data-tab="strategy">Spending strategy <span class="in-progress-badge">In Progress</span></button>
+    </nav>
+    <div class="global-controls" id="globalControls">
+      <span class="gc-label">Show dollars as</span>
+      <div class="seg-toggle" id="inflationToggle" role="group" aria-label="Dollar display mode">
+        <button type="button" class="seg active" data-mode="nominal">Future Nominal</button>
+        <button type="button" class="seg" data-mode="today">Today's Dollars</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="layout tab-panel hidden" id="tab-forecast">
+    <!-- INPUTS -->
+    <div class="panel" id="inputs">
+      <div class="panel-head">
+        <h2>Your household</h2>
+        <div class="save-bar">
+          <span class="save-status" id="saveStatus"></span>
+          <button type="button" id="undoBtn" class="btn-link undo hidden">Undo</button>
+          <button type="button" id="exportBtn" class="btn-link">Export</button>
+          <button type="button" id="importBtn" class="btn-link">Import</button>
+          <button type="button" id="shareBtn" class="btn-link">Share link</button>
+          <button type="button" id="resetBtn" class="btn-link">Reset</button>
+          <input type="file" id="importFile" accept="application/json" hidden data-nostate>
+        </div>
+      </div>
+
+      <div class="scenario-bar">
+        <label for="scenarioSelect">Scenarios</label>
+        <select id="scenarioSelect" data-nostate>
+          <option value="">— Saved scenarios —</option>
+        </select>
+        <button type="button" id="saveAsBtn" class="btn-link">Save as…</button>
+        <button type="button" id="renameBtn" class="btn-link">Rename</button>
+        <button type="button" id="deleteScenarioBtn" class="btn-link">Delete</button>
+        <div class="scenario-saveas hidden" id="scenarioSaveAs">
+          <input type="text" id="scenarioNameInput" placeholder="Scenario name" data-nostate>
+          <button type="button" id="saveAsConfirm" class="btn-link">Save</button>
+          <button type="button" id="saveAsCancel" class="btn-link">Cancel</button>
+        </div>
+      </div>
+
+      <p class="synced-note">Household, ages, and Social Security are set once in <strong>Goal Builder</strong> and used everywhere. <a href="#" class="edit-in-goal-link" data-jump-tab="goal">Edit in Goal Builder ↗</a></p>
+      <div class="field">
+        <label for="household">Household</label>
+        <select id="household" readonly disabled class="synced-field">
+          <option value="single">Single</option>
+          <option value="couple">Couple</option>
+        </select>
+      </div>
+
+      <div class="person" id="personA">
+        <h3>Person A</h3>
+        <div class="row">
+          <div class="field"><label>Current age</label><input type="number" id="ageA" value="35" min="18" max="90" readonly class="synced-field"></div>
+          <div class="field"><label>Retire at</label><input type="number" id="retA" value="65" min="40" max="90" readonly class="synced-field"></div>
+        </div>
+        <div class="field"><label>Social Security at retirement ($/yr)</label><input type="text" inputmode="decimal" id="ssA" value="24,000" min="0" step="500" data-money readonly class="synced-field"></div>
+      </div>
+
+      <div class="person hidden" id="personB">
+        <h3>Person B</h3>
+        <div class="row">
+          <div class="field"><label>Current age</label><input type="number" id="ageB" value="36" min="18" max="90" readonly class="synced-field"></div>
+          <div class="field"><label>Retire at</label><input type="number" id="retB" value="65" min="40" max="90" readonly class="synced-field"></div>
+        </div>
+        <div class="field"><label>Social Security at retirement ($/yr)</label><input type="text" inputmode="decimal" id="ssB" value="22,000" min="0" step="500" data-money readonly class="synced-field"></div>
+      </div>
+
+      <div class="accounts-head" style="margin-top:20px">
+        <h2 id="potTitle" style="margin:0">Accounts</h2>
+        <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">Forecast-only, no Goal Builder equivalent. Drives this tab's balance growth chart, runway, and FIRE-milestone ages — Goal Builder's target doesn't depend on account balance at all.</span></span>
+      </div>
+      <div class="add-acct-bar">
+        <span class="add-acct-label">Add:</span>
+        <button type="button" class="btn-link add-acct" data-type="401k">+ 401(k)</button>
+        <button type="button" class="btn-link add-acct" data-type="403b">+ 403(b)</button>
+        <button type="button" class="btn-link add-acct" data-type="457b">+ 457(b)</button>
+        <button type="button" class="btn-link add-acct" data-type="tsp">+ TSP</button>
+        <button type="button" class="btn-link add-acct" data-type="ira">+ IRA</button>
+        <button type="button" class="btn-link add-acct" data-type="hsa">+ HSA</button>
+        <button type="button" class="btn-link add-acct" data-type="brokerage">+ Brokerage</button>
+      </div>
+      <p class="accounts-hint">Each account shows only the sources that fit its type — a <strong>401(k)</strong> offers "Roth (401k)", an <strong>IRA</strong> offers "Roth IRA". Public-sector plans (<strong>TSP</strong>, <strong>403(b)</strong>, <strong>457(b)</strong>) add agency-match and penalty-free-on-separation options.</p>
+      <div id="accountsContainer"></div>
+      <div class="accounts-total" id="accountsTotal"></div>
+      <!-- Derived totals mirror the structured accounts; downstream forecast reads these. -->
+      <input type="hidden" id="bal" value="140000">
+      <input type="hidden" id="con" value="26400">
+
+      <h2 style="margin-top:20px">Goals &amp; spending</h2>
+      <div class="field"><label>Desired household income ($/yr in today's $) <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">Forecast-only — NOT auto-synced from Goal Builder. It only changes when you click "Use Goal Builder spending" below; drives this tab's gap banner, FIRE milestones, and Full FIRE target.</span></span></label><input type="text" inputmode="decimal" id="desired" value="80,000" min="0" step="1000" data-money></div>
+      <div class="pull-goal-row">
+        <button type="button" class="pull-goal-btn">⬇ Use Goal Builder spending</button>
+        <span class="pull-confirm"></span>
+      </div>
+      <p class="synced-note" style="margin-bottom:6px">Lean/Fat spend come from Goal Builder's tier pills (COL-adjusted). <a href="#" class="edit-in-goal-link" data-jump-tab="goal">Edit in Goal Builder ↗</a></p>
+      <div class="field"><label>Lean FIRE spend ($/yr)</label><input type="text" inputmode="decimal" id="lean" value="45,000" min="0" step="1000" data-money readonly class="synced-field"></div>
+      <div class="field"><label>Fat FIRE spend ($/yr)</label><input type="text" inputmode="decimal" id="fat" value="140,000" min="0" step="1000" data-money readonly class="synced-field"></div>
+      <div class="field"><label>Years in retirement <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">Forecast-only — sets how far the chart/runway/audit run. Defaults to roughly age 95 based on your retirement age; raise the max yourself for a longer or shorter view. Goal Builder's own Spending Timeline and FIRE targets always plan through age 95 regardless of this field.</span></span></label><input type="number" id="retYears" value="30" min="5" max="75"></div>
+
+      <h2 style="margin-top:20px">Retirement income &amp; costs</h2>
+      <div class="field"><label>Pre-65 health insurance ($/yr)</label><input type="text" inputmode="decimal" id="healthcare" value="15,000" min="0" step="1000" data-money readonly class="synced-field"></div>
+      <p class="synced-note" style="margin-top:-6px">Set in Goal Builder's Healthcare section (ACA estimate, or the manual fallback). <a href="#" class="edit-in-goal-link" data-jump-tab="goal">Edit in Goal Builder ↗</a></p>
+      <p class="accounts-hint" style="margin-top:-6px">Social Security is assumed to start at age 62 (claim-early, worst-case estimate) — same assumption Goal Builder uses.</p>
+      <p class="csub" id="locationFromGoal" style="margin-top:-4px"></p>
+
+      <div class="streams-head">
+        <label style="font-size:13px;color:var(--muted)">Income streams (part-time, rental, pension…) <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">Forecast-only, no Goal Builder equivalent. Affects this tab's gap banner/runway/audit — deliberately NOT counted in Goal Builder's "All-in FIRE" target (which only reflects what's actually on the Goal Builder tab).</span></span></label>
+        <button type="button" id="addStreamBtn" class="btn-link">+ Add stream</button>
+      </div>
+      <div id="streamsContainer"></div>
+      <p class="streams-hint" style="font-size:12px;color:var(--muted);margin:6px 0 0">Streams <strong>before</strong> your retirement age add to savings, so they raise your projected balance. Streams <strong>during</strong> retirement don't change the at-retirement balance — they lower each year's drawdown, extending your runway and improving the gap banner.</p>
+
+      <div class="streams-head" style="margin-top:14px">
+        <label style="font-size:13px;color:var(--muted)">Government pension (FERS / CSRS) — optional <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">Forecast-only. Affects this tab's gap banner/runway/audit — deliberately NOT counted in Goal Builder's target, same as Income streams above.</span></span></label>
+      </div>
+      <div class="row">
+        <div class="field"><label>High-3 avg salary ($/yr)</label><input type="number" id="pensionHigh3" value="0" min="0" step="1000"></div>
+        <div class="field"><label>Years of service</label><input type="number" id="pensionYears" value="0" min="0" max="50" step="1"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Pension starts at age</label><input type="number" id="pensionStartAge" value="62" min="40" max="75" step="1"></div>
+        <div class="field"><label>System</label><select id="pensionSystem"><option value="fers">FERS</option><option value="csrs">CSRS</option></select></div>
+      </div>
+
+      <h2 style="margin-top:20px">Market assumptions</h2>
+      <div class="row">
+        <div class="field"><label>Inflation % <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">Used by BOTH tabs — also grows the per-year costs behind Goal Builder's "All-in FIRE" average-spend figure, even though there's no Inflation field on Goal Builder itself.</span></span></label><input type="number" id="inflation" value="3" min="0" max="10" step="0.1"></div>
+        <div class="field"><label>Return band ±% <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">Forecast-only — widens this tab's Optimistic/Pessimistic balance-growth band. Goal Builder's target always uses the Base scenario only, so this doesn't affect it.</span></span></label><input type="number" id="returnBand" value="2" min="0" max="6" step="0.5"></div>
+      </div>
+      <div class="field"><label>Inflation band ±% (range) <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">Forecast-only, same as Return band — widens this tab's Optimistic/Pessimistic range, doesn't reach Goal Builder.</span></span></label><input type="number" id="inflationBand" value="1" min="0" max="5" step="0.5"></div>
+    </div>
+
+    <!-- RESULTS + WHAT-IF -->
+    <div class="results">
+      <div class="assumptions-bar" id="assumptionsBarForecast"></div>
+      <div class="panel">
+        <h2>What-if levers</h2>
+        <div class="slider-field">
+          <div class="slabel"><span>Return rate (base) <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">Forecast-only — only affects how fast THIS tab's balance grows (chart, runway, balance cards). Goal Builder's target doesn't depend on account balance at all, so this never reaches it.</span></span></span><span class="sval" id="returnVal">7.0%</span></div>
+          <input type="range" id="returnRate" min="2" max="12" step="0.1" value="7">
+        </div>
+        <div class="slider-field">
+          <div class="slabel"><span>Withdrawal rate <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">Used by BOTH tabs — this is the literal divisor in every FIRE target (spend ÷ withdrawal rate), including Goal Builder's "Full FIRE"/"All-in FIRE" cards, even though Goal Builder has no Withdrawal rate field of its own.</span></span></span><span class="sval" id="wrVal">4.0%</span></div>
+          <input type="range" id="withdrawalRate" min="2" max="7" step="0.1" value="4">
+        </div>
+        <div class="slider-field">
+          <div class="slabel"><span>Extra annual contribution (household) <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">Forecast-only — adds to this tab's account balance projection. Doesn't reach Goal Builder's target (balance-independent by design).</span></span></span><span class="sval" id="extraVal">$0</span></div>
+          <input type="range" id="extraContribution" min="0" max="60000" step="500" value="0">
+        </div>
+        <!-- ageShift is kept only so the few remaining reads (buildInputs,
+             renderStrategy) resolve to a constant 0. Nothing WRITES it anymore:
+             Scenario Playground now owns its retirement-age what-if in the
+             module-level scenarioRetirementAge state and applies it to a local
+             inputs copy (see renderScenarioPlayground), instead of hijacking
+             this shared field — which used to leak the scenario age onto the
+             Forecast/Strategy/Debt tabs. data-nostate so any old persisted
+             non-zero value from before that fix is ignored on load. -->
+        <input type="hidden" id="ageShift" data-nostate min="-10" max="15" value="0">
+      </div>
+
+      <div class="gap-banner" id="gapBanner"></div>
+      <div class="gap-banner hidden" id="fireWarning"></div>
+
+      <div class="panel">
+        <h2>Savings growth &amp; FIRE milestones</h2>
+        <div id="chart"></div>
+        <div class="chart-legend" id="chartLegend"></div>
+        <details class="audit" style="margin-top:14px">
+          <summary>Year-by-year projection</summary>
+          <div id="projectionTable"></div>
+        </details>
+      </div>
+
+      <div class="panel">
+        <h2>Projected balance at retirement</h2>
+        <div class="cards" id="balanceCards"></div>
+        <div class="csub" style="margin-top:10px;color:var(--muted);font-size:13px" id="incomeLine"></div>
+      </div>
+
+      <div class="panel">
+        <h2>FIRE milestones <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">Mixed sources: Lean and Fat targets come from Goal Builder's tier pills (synced above). Full FIRE uses "Desired household income", a Forecast-only field. Coast FIRE is derived from your accounts, also Forecast-only.</span></span></h2>
+        <div class="fire-grid" id="fireGrid"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Full FIRE &amp; All-in FIRE breakdown</h2>
+        <p class="accounts-hint" style="margin-top:0">The detailed targets from Goal Builder — net-of-SS, Medicare, and the per-line math.</p>
+        <details class="audit">
+          <summary>How is this calculated?</summary>
+          <div class="cards" id="fireBreakdown" style="margin-top:12px"></div>
+        </details>
+      </div>
+
+      <div class="panel">
+        <h2>Audit the math</h2>
+        <details class="audit" open>
+          <summary>Assumptions &amp; per-scenario figures</summary>
+          <div id="auditBody"></div>
+        </details>
+        <p class="disclaimer">All projections are deterministic (same inputs → same outputs), not a Monte Carlo simulation. Ranges show a band of <em>assumptions</em>, not probabilities.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- GOAL BUILDER TAB -->
+  <div class="layout goal-layout tab-panel" id="tab-goal">
+    <!-- RESULTS (DOM-first: screen readers / mobile get Summary → Timeline → Inputs) -->
+    <div class="results goal-results" id="goalResults">
+      <div class="assumptions-bar" id="assumptionsBarGoal"></div>
+      <div class="panel" id="goal-summary">
+        <h2>Goal summary</h2>
+        <div class="cards" id="goalSummary"></div>
+      </div>
+      <div class="panel" id="spending-timeline">
+        <h2>Spending timeline <span id="goalTimelineInfoTip"></span></h2>
+        <div id="goalTimeline"></div>
+        <div class="chart-legend" id="goalTimelineLegend"></div>
+        <p class="accounts-hint" id="goalTimelineDisclaimer" style="margin-top:8px"></p>
+      </div>
+    </div>
+
+    <!-- INPUTS -->
+    <div class="panel goal-inputs" id="goalInputs">
+      <h3 class="goal-sec" style="margin-top:0">Your household <span class="info-tip tip-below" tabindex="0">ⓘ<span class="info-tip-bubble">These ages, Social Security estimates, and location drive everything below — and sync to FIRE Forecast and Healthcare automatically.</span></span></h3>
+      <div class="field">
+        <label for="goalZip">Retirement ZIP</label>
+        <input type="text" inputmode="numeric" id="goalZip" value="" maxlength="5" placeholder="e.g. 75068">
+        <p class="pia-result" id="goalZipResult"></p>
+      </div>
+      <div class="field">
+        <label for="goalHousehold">Household</label>
+        <select id="goalHousehold">
+          <option value="single">Single</option>
+          <option value="couple">Couple</option>
+        </select>
+      </div>
+
+      <div class="person" id="goalPersonA">
+        <h3>Person A</h3>
+        <div class="row">
+          <div class="field"><label>Current age</label><input type="number" id="goalAgeA" value="35" min="18" max="90"></div>
+          <div class="field"><label>Retire at</label><input type="number" id="goalRetA" value="65" min="40" max="90"></div>
+        </div>
+        <div class="field"><label>SS at retirement $/yr <a href="https://ssa.tools/" target="_blank" rel="noopener" class="ss-est-link" title="Estimate your benefit at ssa.tools">(estimate)</a></label><input type="text" inputmode="decimal" id="goalSsA" value="24,000" min="0" step="500" data-money></div>
+      </div>
+
+      <div class="person hidden" id="goalPersonB">
+        <h3>Person B</h3>
+        <div class="row">
+          <div class="field"><label>Current age</label><input type="number" id="goalAgeB" value="36" min="18" max="90"></div>
+          <div class="field"><label>Retire at</label><input type="number" id="goalRetB" value="65" min="40" max="90"></div>
+        </div>
+        <div class="field"><label>SS at retirement $/yr <a href="https://ssa.tools/" target="_blank" rel="noopener" class="ss-est-link" title="Estimate your benefit at ssa.tools">(estimate)</a></label><input type="text" inputmode="decimal" id="goalSsB" value="22,000" min="0" step="500" data-money></div>
+      </div>
+
+      <div class="slider-field">
+        <div class="slabel"><span>Withdrawal rate <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">The divisor in every FIRE target (spend ÷ withdrawal rate) — the classic "4% rule" lever. Same value as Forecast's Withdrawal rate slider; changing either one changes both, everywhere.</span></span></span><span class="sval" id="goalWrVal">4.0%</span></div>
+        <input type="range" id="goalWithdrawalRate" min="2" max="7" step="0.1" value="4" data-nostate>
+      </div>
+
+      <h3 class="goal-sec" style="margin-bottom:6px">Annual spend</h3>
+      <p class="col-connection-note" id="colConnectionNote"></p>
+      <div class="spend-tier-pills" id="spendTierPills">
+        <button type="button" class="tier-pill" data-tier="lean" data-base="45000">Lean $45k</button>
+        <button type="button" class="tier-pill" data-tier="base" data-base="65000">Base $65k</button>
+        <button type="button" class="tier-pill" data-tier="fat" data-base="120000">Fat $120k</button>
+      </div>
+      <p class="spend-tier-state" id="spendTierState"></p>
+      <p class="csub" id="locationChangeBanner"></p>
+      <div id="spendCategoriesContainer"></div>
+
+      <div class="streams-head">
+        <h3 class="goal-sec" style="margin:0">Spending phases <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">Spending rarely stays flat. The tier/category budget above sets your first phase; add more phases for later life stages.</span></span></h3>
+        <button type="button" id="addPhaseBtn" class="btn-link">+ Add phase</button>
+      </div>
+      <div id="phasesContainer"></div>
+
+      <h3 class="goal-sec">Healthcare</h3>
+      <p class="accounts-hint" style="margin-top:0">Pre-65 we estimate your ACA marketplace cost after subsidies; at 65 it auto-transitions to a Medicare baseline (Part B + D + Medigap, ~$6,500/yr per person).</p>
+      <div class="row goal-two-col">
+        <div class="field"><label>Household size</label><input type="number" id="acaHousehold" value="2" min="1" max="12" step="1"></div>
+        <div class="field"><label>MAGI in retirement ($) <span style="color:var(--muted);font-weight:normal;font-size:11px">— set to estimate ACA subsidies</span></label><input type="text" inputmode="decimal" id="acaMagi" value="0" data-money></div>
+      </div>
+      <p class="pia-result" id="acaResult"></p>
+      <div class="field"><label>Pre-65 health insurance ($/yr) <span style="color:var(--muted);font-weight:normal;font-size:11px">— used if no MAGI is set above</span></label><input type="text" inputmode="decimal" id="goalHealthcareManual" value="15,000" min="0" step="1000" data-money></div>
+
+      <details class="audit lifecycle-accordion" id="lifecycleAccordion">
+        <summary>Lifecycle expenses <span class="csub" style="font-weight:normal">— home, vehicles, support, kids/529, custom</span></summary>
+        <div class="lifecycle-quickadd" id="lifecycleQuickAdd">
+          <button type="button" class="btn-link lc-chip" data-jump="vehiclesContainer" data-add="addVehicleBtn">+ vehicle</button>
+          <button type="button" class="btn-link lc-chip" data-jump="kids529Container" data-add="addKid529Btn">+ kid</button>
+          <button type="button" class="btn-link lc-chip" data-jump="homeSection" data-add="addHomeBtn">+ home</button>
+          <button type="button" class="btn-link lc-chip" data-jump="customExpensesContainer" data-add="addCustomExpenseBtn">+ custom</button>
+        </div>
+        <div class="lifecycle-suggestions" id="lifecycleSuggestions"></div>
+
+        <div class="streams-head">
+          <label style="font-size:13px;color:var(--muted)">Home</label>
+          <span>
+            <button type="button" id="addHomeBtn" class="btn-link">+ Add home</button>
+            <button type="button" id="removeHomeBtn" class="btn-link hidden" title="Remove home — clears value, property tax, and the national-average checkbox">× Remove</button>
+          </span>
+        </div>
+        <p class="streams-empty" id="homeEmpty">No home expenses yet — add one to model maintenance and property tax.</p>
+        <div id="homeSection" class="hidden">
+          <div class="field"><label>Home value ($) <span style="color:var(--muted);font-weight:normal;font-size:11px">— 1%/yr maintenance applied</span></label><input type="text" inputmode="decimal" id="homeValue" value="0" data-money></div>
+          <div class="field"><label>Annual property tax ($)</label><input type="text" inputmode="decimal" id="propertyTax" value="0" data-money></div>
+          <label class="pia-enable"><input type="checkbox" id="propertyTaxNatAvg"> Use national average (1.2% of home value)</label>
+        </div>
+
+        <div class="streams-head" style="margin-top:14px">
+          <label style="font-size:13px;color:var(--muted)">Vehicle replacements</label>
+          <button type="button" id="addVehicleBtn" class="btn-link">+ Add vehicle</button>
+        </div>
+        <div id="vehiclesContainer"></div>
+
+        <div class="streams-head" style="margin-top:14px">
+          <label style="font-size:13px;color:var(--muted)">Support for others</label>
+          <button type="button" id="addSupportBtn" class="btn-link">+ Add recipient</button>
+        </div>
+        <div id="supportContainer"></div>
+
+        <div class="streams-head" style="margin-top:14px">
+          <label style="font-size:13px;color:var(--muted)">Kids</label>
+          <button type="button" id="addKid529Btn" class="btn-link">+ Add child</button>
+        </div>
+        <div id="kids529Container"></div>
+
+        <div class="streams-head" style="margin-top:14px">
+          <label style="font-size:13px;color:var(--muted)">Custom expenses</label>
+          <button type="button" id="addCustomExpenseBtn" class="btn-link">+ Add custom</button>
+        </div>
+        <div id="customExpensesContainer"></div>
+      </details>
+    </div>
+  </div>
+
+  <!-- HUSTLE TAB -->
+  <div class="tab-panel hidden" id="tab-hustle">
+    <div class="strategy-wrap">
+      <div class="panel">
+        <h2>Your Action Plan</h2>
+        <p class="strat-intro">Pick a goal and a target age. We'll show the gap between your current plan and that goal — and three levers you can pull to close it: <strong>save more</strong>, <strong>work a little longer</strong>, or <strong>downshift to part-time</strong>.</p>
+        <div class="hustle-controls">
+          <div class="field">
+            <label for="hustleGoal">Goal to reach</label>
+            <select id="hustleGoal">
+              <option value="full">Full FIRE — fund my desired lifestyle</option>
+              <option value="lean">Lean FIRE — cover frugal spending</option>
+              <option value="barista">Barista FIRE — portfolio + part-time</option>
+              <option value="fat">Fat FIRE — elevated lifestyle</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="hustleAge">Reach it by age <span class="field-who" id="hustleAgeWho"></span></label>
+            <input type="number" id="hustleAge" min="30" max="90" step="1">
+          </div>
+          <div class="field">
+            <label for="hustleInvest">Side income I can invest ($/yr)</label>
+            <input type="number" id="hustleInvest" value="0" min="0" step="1000">
+          </div>
+        </div>
+      </div>
+      <div id="hustleBody"></div>
+    </div>
+  </div>
+
+  <!-- SPENDING STRATEGY TAB -->
+  <div class="tab-panel hidden" id="tab-strategy">
+    <div class="strategy-wrap">
+      <div class="panel">
+        <h2>How to spend it once you reach FIRE</h2>
+        <p class="strat-intro" id="stratIntro"></p>
+        <div class="pull-goal-row">
+          <button type="button" class="pull-goal-btn">⬇ Use Goal Builder spending</button>
+          <span class="pull-confirm"></span>
+        </div>
+        <p class="strat-note">These are educational frameworks, not personalized tax or investment advice — confirm specifics with a fiduciary advisor or CPA before acting.</p>
+      </div>
+      <div id="strategyBody"></div>
+    </div>
+  </div>
+
+  <!-- DEBT DESTROYER TAB -->
+  <div class="layout tab-panel hidden" id="tab-debt">
+    <!-- INPUTS -->
+    <div class="panel" id="debtInputs">
+      <h2>Your debt</h2>
+      <p class="strat-intro" style="margin-top:0">Model a mortgage, student loan, or any installment debt. Add extra principal or one-time lump sums and watch the payoff date jump forward.</p>
+      <div class="field"><label>Current balance ($)</label><input type="text" inputmode="decimal" id="debtBalance" value="0" min="0" step="1000" data-money></div>
+      <div class="row">
+        <div class="field"><label>Interest rate (APR %)</label><input type="number" id="debtRate" value="6.5" min="0" max="30" step="0.05"></div>
+        <div class="field"><label>Remaining term (years)</label><input type="number" id="debtTerm" value="30" min="1" max="40" step="1"></div>
+      </div>
+      <div class="field">
+        <label>Maturity date <span style="color:var(--muted);font-weight:normal;font-size:11px">(optional — use if you don't know the term)</span></label>
+        <input type="hidden" id="debtMaturity">
+        <div class="month-picker">
+          <select id="debtMaturityMonth" class="mp-select" data-nostate aria-label="Maturity month">
+            <option value="">Month</option>
+            <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option>
+            <option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option>
+            <option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option>
+            <option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
+          </select>
+          <select id="debtMaturityYear" class="mp-select" data-nostate aria-label="Maturity year">
+            <option value="">Year</option>
+          </select>
+          <button type="button" class="btn-link mp-clear" id="debtMaturityClear">Clear</button>
+        </div>
+        <p class="debt-pay-hint" id="debtTermNote"></p>
+      </div>
+      <div class="row">
+        <div class="field"><label>Monthly payment ($)</label><input type="text" inputmode="decimal" id="debtPayment" value="0" min="0" step="50" data-money></div>
+        <div class="field"><label>Monthly extra principal ($)</label><input type="text" inputmode="decimal" id="debtExtra" value="0" min="0" step="50" data-money></div>
+      </div>
+      <p class="debt-pay-hint" id="debtPayHint"></p>
+      <div class="streams-head">
+        <label style="font-size:13px;color:var(--muted)">One-time lump sums (bonus, tax refund, windfall…)</label>
+        <button type="button" id="addLumpBtn" class="btn-link">+ Add lump sum</button>
+      </div>
+      <div id="lumpsContainer"></div>
+    </div>
+
+    <!-- RESULTS -->
+    <div class="results">
+      <div class="panel debt-hero" id="debtHero"></div>
+      <div class="debt-stats" id="debtStats"></div>
+      <div class="panel">
+        <h2>Payoff trajectory</h2>
+        <div id="debtChart"></div>
+        <div class="chart-legend" id="debtChartLegend"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCENARIO PLAYGROUND TAB -->
+  <div class="layout tab-panel hidden" id="tab-scenario">
+    <!-- INPUTS -->
+    <div class="panel" id="scenarioInputs">
+      <h2>Scenario playground</h2>
+      <p class="strat-intro" style="margin-top:0">Stress-test your plan against life's curveballs. Add events below and watch the impacted plan diverge from your baseline in real time.</p>
+      <div class="pull-goal-row">
+        <button type="button" class="pull-goal-btn">⬇ Use Goal Builder spending</button>
+        <span class="pull-confirm"></span>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>Retirement age</label>
+          <input type="number" id="scenarioRetirementAge" data-nostate min="18" max="90" step="1" placeholder="Enter age">
+        </div>
+      </div>
+      <div class="streams-head">
+        <label style="font-size:13px;color:var(--muted)">Events</label>
+        <div class="event-add-bar">
+          <button type="button" class="btn-link add-event" data-type="correction">+ Market correction</button>
+          <button type="button" class="btn-link add-event" data-type="oneTime">+ Expense / windfall</button>
+          <button type="button" class="btn-link add-event" data-type="incomeShift">+ Income shift</button>
+          <button type="button" class="btn-link add-event" data-type="geo">+ Geo-arbitrage</button>
+        </div>
+      </div>
+      <div id="eventsContainer"></div>
+      <p class="accounts-hint" id="eventsEmpty">No events yet — add one above to see its impact.</p>
+    </div>
+
+    <!-- RESULTS -->
+    <div class="results">
+      <div class="assumptions-bar" id="assumptionsBarScenario"></div>
+      <div class="panel">
+        <h2>Baseline vs impacted plan</h2>
+        <div id="scenarioChart"></div>
+        <div class="chart-legend" id="scenarioChartLegend"></div>
+      </div>
+      <div class="panel">
+        <h2>Impact summary</h2>
+        <div class="cards" id="scenarioSummary"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EASY ONBOARDING WIZARD -->
+  <div id="onboarding-wizard" class="wizard-overlay hidden" aria-hidden="true">
+    <div class="wizard-modal" role="dialog" aria-modal="true" aria-labelledby="wizHeading">
+      <button type="button" class="wizard-close" id="wizCloseBtn" aria-label="Close setup">×</button>
+      <div class="wizard-progress"><div class="wizard-progress-bar" id="wizProgressBar"></div></div>
+
+      <div class="wizard-body">
+        <!-- STEP 1 — Welcome -->
+        <section class="wizard-step" data-step="1">
+          <div class="wiz-flame" aria-hidden="true">🔥</div>
+          <h2 class="wizard-title" id="wizHeading">Welcome to The FIRE Engine</h2>
+          <p class="wizard-sub">Answer a few quick questions and we'll set up your retirement forecast with sensible defaults. You can fine-tune everything afterward.</p>
+          <div class="wiz-welcome-actions">
+            <button type="button" class="wiz-btn wiz-btn-primary wiz-btn-lg" id="wizStartBtn">Start Quick Setup</button>
+            <button type="button" class="wiz-btn wiz-btn-ghost wiz-btn-lg" id="wizSkipBtn">Skip to Dashboard</button>
+          </div>
+        </section>
+
+        <!-- STEP 2 — FIRE target -->
+        <section class="wizard-step hidden" data-step="2">
+          <h2 class="wizard-title">Do you know your FIRE number?</h2>
+          <p class="wizard-sub">If you already know the annual retirement income you want, Quick Setup can use it. If not, Goal Builder will help you shape it first.</p>
+          <div class="wiz-choice-group" id="wizFireChoice">
+            <button type="button" class="wiz-choice" data-fireknown="yes">Yes, I know it</button>
+            <button type="button" class="wiz-choice" data-fireknown="no">Not yet</button>
+          </div>
+        </section>
+
+        <!-- STEP 3 — Household -->
+        <section class="wizard-step hidden" data-step="3">
+          <h2 class="wizard-title">Who are we planning for?</h2>
+          <p class="wizard-sub">This sets up one or two people in your forecast.</p>
+          <div class="wiz-choice-group" id="wizHouseholdChoice">
+            <button type="button" class="wiz-choice active" data-household="single">Single</button>
+            <button type="button" class="wiz-choice" data-household="couple">Couple</button>
+          </div>
+          <div class="wiz-field">
+            <label for="wizAgeA">Your current age <span class="wiz-req">*</span></label>
+            <input type="text" inputmode="numeric" id="wizAgeA" data-nostate placeholder="35">
+          </div>
+          <div class="wiz-field wiz-couple-only hidden">
+            <label for="wizAgeB">Partner's current age <span class="wiz-req">*</span></label>
+            <input type="text" inputmode="numeric" id="wizAgeB" data-nostate placeholder="36">
+          </div>
+        </section>
+
+        <!-- STEP 4 — Timeline -->
+        <section class="wizard-step hidden" data-step="4">
+          <h2 class="wizard-title">When do you want to retire?</h2>
+          <p class="wizard-sub">The age you'd like to stop working full-time.</p>
+          <div class="wiz-field">
+            <label for="wizRetA">Your desired retirement age <span class="wiz-req">*</span></label>
+            <input type="text" inputmode="numeric" id="wizRetA" data-nostate placeholder="50">
+          </div>
+          <div class="wiz-field wiz-couple-only hidden">
+            <label for="wizRetB">Partner's desired retirement age <span class="wiz-req">*</span></label>
+            <input type="text" inputmode="numeric" id="wizRetB" data-nostate placeholder="50">
+          </div>
+        </section>
+
+        <!-- STEP 5 — Assets -->
+        <section class="wizard-step hidden" data-step="5">
+          <h2 class="wizard-title">What have you saved so far?</h2>
+          <p class="wizard-sub">Optional — leave blank and we'll start you at $0. You can add detailed accounts later.</p>
+          <div class="wiz-choice-group" id="wizAssetChoice">
+            <button type="button" class="wiz-choice active" data-assetmode="single">Single total</button>
+            <button type="button" class="wiz-choice" data-assetmode="breakdown">Breakdown by type</button>
+          </div>
+          <div id="wizAssetSingle">
+            <div class="wiz-field">
+              <label for="wizTotalSavings">Total current savings ($)</label>
+              <input type="text" inputmode="decimal" id="wizTotalSavings" data-nostate placeholder="$250,000">
+            </div>
+          </div>
+          <div id="wizAssetBreakdown" class="hidden">
+            <div class="wiz-grid">
+              <div class="wiz-field"><label for="wizPretax">Pre-tax (401k/IRA) ($)</label><input type="text" inputmode="decimal" id="wizPretax" data-nostate placeholder="$120,000"></div>
+              <div class="wiz-field"><label for="wizRoth">Roth ($)</label><input type="text" inputmode="decimal" id="wizRoth" data-nostate placeholder="$40,000"></div>
+              <div class="wiz-field"><label for="wizHSA">HSA ($)</label><input type="text" inputmode="decimal" id="wizHSA" data-nostate placeholder="$10,000"></div>
+              <div class="wiz-field"><label for="wiz457">457(b) ($)</label><input type="text" inputmode="decimal" id="wiz457" data-nostate placeholder="$0"></div>
+              <div class="wiz-field"><label for="wizTaxable">Taxable / brokerage ($)</label><input type="text" inputmode="decimal" id="wizTaxable" data-nostate placeholder="$50,000"></div>
+              <div class="wiz-field"><label for="wizPension">Future annual pension ($/yr)</label><input type="text" inputmode="decimal" id="wizPension" data-nostate placeholder="$0"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- STEP 6 — Savings rate -->
+        <section class="wizard-step hidden" data-step="6">
+          <h2 class="wizard-title">How much are you saving?</h2>
+          <p class="wizard-sub">Optional — total you contribute across all accounts each year. Leave blank for $0.</p>
+          <div class="wiz-field">
+            <label for="wizContributions">Total annual contributions ($/yr)</label>
+            <input type="text" inputmode="decimal" id="wizContributions" data-nostate placeholder="$50,000">
+          </div>
+        </section>
+
+        <!-- STEP 7 — Target -->
+        <section class="wizard-step hidden" data-step="7">
+          <h2 class="wizard-title">What's your retirement target?</h2>
+          <p class="wizard-sub">The annual income you'd like to spend once retired.</p>
+          <div class="wiz-field">
+            <label for="wizDesired">Desired annual income in retirement ($/yr) <span class="wiz-req">*</span></label>
+            <input type="text" inputmode="decimal" id="wizDesired" data-nostate placeholder="$80,000">
+          </div>
+          <div class="wiz-field">
+            <label for="wizHealthcare">Estimated annual pre-65 healthcare cost ($/yr)</label>
+            <input type="text" inputmode="decimal" id="wizHealthcare" data-nostate placeholder="$12,000">
+            <p class="wiz-help">Rec: $6k–$8k/yr (Single) or $12k–$15k/yr (Couple).</p>
+          </div>
+        </section>
+
+        <!-- ============ GOAL BUILDER TRACK (when "Not yet" on FIRE number) ============ -->
+        <!-- GOAL STEP 1 — Household & timeline -->
+        <section class="wizard-step hidden" data-goalstep="1">
+          <h2 class="wizard-title">Let's shape your goal</h2>
+          <p class="wizard-sub">No worries if you don't know your number yet — that's exactly what Goal Builder is for. First, who are we planning for?</p>
+          <div class="wiz-choice-group" id="wizGoalHouseholdChoice">
+            <button type="button" class="wiz-choice active" data-ghousehold="single">Single</button>
+            <button type="button" class="wiz-choice" data-ghousehold="couple">Couple</button>
+          </div>
+          <div class="wiz-grid">
+            <div class="wiz-field">
+              <label for="wizGoalAgeA">Your current age <span class="wiz-req">*</span></label>
+              <input type="text" inputmode="numeric" id="wizGoalAgeA" data-nostate placeholder="35">
+            </div>
+            <div class="wiz-field">
+              <label for="wizGoalRetA">Desired retirement age <span class="wiz-req">*</span></label>
+              <input type="text" inputmode="numeric" id="wizGoalRetA" data-nostate placeholder="50">
+            </div>
+            <div class="wiz-field wiz-gcouple-only hidden">
+              <label for="wizGoalAgeB">Partner's current age <span class="wiz-req">*</span></label>
+              <input type="text" inputmode="numeric" id="wizGoalAgeB" data-nostate placeholder="36">
+            </div>
+            <div class="wiz-field wiz-gcouple-only hidden">
+              <label for="wizGoalRetB">Partner's retirement age <span class="wiz-req">*</span></label>
+              <input type="text" inputmode="numeric" id="wizGoalRetB" data-nostate placeholder="50">
+            </div>
+          </div>
+        </section>
+
+        <!-- GOAL STEP 2 — Spending -->
+        <section class="wizard-step hidden" data-goalstep="2">
+          <h2 class="wizard-title">What would you like to spend each year?</h2>
+          <p class="wizard-sub">Your best estimate of yearly living costs in retirement, in today's dollars. You can fine-tune it later — even split it into life-stage phases.</p>
+          <div class="wiz-field">
+            <label for="wizGoalSpend">Annual retirement spending ($/yr) <span class="wiz-req">*</span></label>
+            <input type="text" inputmode="decimal" id="wizGoalSpend" data-nostate placeholder="$80,000">
+            <p class="wiz-help">Not sure? Many households land around 70–85% of their pre-retirement spending.</p>
+          </div>
+        </section>
+
+        <!-- GOAL STEP 3 — Healthcare / household size -->
+        <section class="wizard-step hidden" data-goalstep="3">
+          <h2 class="wizard-title">A few people to cover?</h2>
+          <p class="wizard-sub">Household size helps Goal Builder estimate pre-65 healthcare and Medicare at 65. You can refine the details later.</p>
+          <div class="wiz-field">
+            <label for="wizGoalHouseholdSize">People in your household</label>
+            <input type="text" inputmode="numeric" id="wizGoalHouseholdSize" data-nostate placeholder="2">
+          </div>
+        </section>
+      </div>
+
+      <div class="wizard-error hidden" id="wizError"></div>
+
+      <div class="wizard-nav" id="wizNav">
+        <button type="button" class="wiz-btn wiz-btn-ghost" id="wizBackBtn">Back</button>
+        <span class="wiz-step-count" id="wizStepCount"></span>
+        <button type="button" class="wiz-btn wiz-btn-primary" id="wizNextBtn">Next</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="config.js?v=77"></script>
+  <script src="accounts.js?v=77"></script>
+  <script src="calc.js?v=77"></script>
+  <script src="app.js?v=77"></script>
+</body>
+</html>
