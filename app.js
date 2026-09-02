@@ -2067,6 +2067,9 @@ function scenarioEffectiveRetirementAge() {
 function syncScenarioRetirementAgeField() {
   const field = $('scenarioRetirementAge');
   if (!field || document.activeElement === field) return;
+  // Only reflect an age while the retirement-age lever is engaged; otherwise the
+  // field stays blank (its "—" placeholder) as an unused overlay.
+  if ($('lvRetOn') && !$('lvRetOn').checked) { field.value = ''; return; }
   const age = scenarioEffectiveRetirementAge();
   field.value = isFinite(age) && age > 0 ? Math.round(age) : '';
 }
@@ -3071,8 +3074,114 @@ function renderScenarioSummary(baseline, impacted, inputs) {
   ].map(([t, v, s, calc]) => `<div class="card"><div class="ctitle">${t} ${infoTip(calc)}</div><div class="cval">${v}</div><div class="csub">${s}</div></div>`).join('');
 }
 
+// --- What-If levers: temporary overlays on the saved base plan --------------
+function leverBaseValue(inp, base) {
+  switch (inp) {
+    case 'scenarioRetirementAge': return Math.round(base.youngestAge + base.yearsToRetirement);
+    case 'lvSpend': return Math.round(base.desiredAnnualIncome);
+    case 'lvCon': return Math.round(base.householdAnnual);
+    case 'lvRetn': return base.baseReturn;
+    case 'lvInfl': return base.baseInflation;
+    case 'lvWr': return base.withdrawalRate;
+    default: return 0;
+  }
+}
+function onLeverToggle(cb, inp) {
+  const on = $(cb) && $(cb).checked, el = $(inp);
+  if (!el) return;
+  el.disabled = !on;
+  if (on) {
+    if (el.value === '' || el.value == null) {
+      const v = leverBaseValue(inp, buildInputs());
+      el.value = el.hasAttribute('data-money') ? fmtInput(v) : v;
+    }
+    if (inp === 'scenarioRetirementAge') applyScenarioRetirementAge();
+  } else {
+    el.value = '';
+    if (inp === 'scenarioRetirementAge') scenarioRetirementAge = null;
+  }
+}
+// Read the enabled levers into engine overrides + a description for the summary.
+function readWhatIfLevers(base) {
+  const overrides = {}, active = [];
+  const on = (id) => $(id) && $(id).checked;
+  if (on('lvRetOn') && $('scenarioRetirementAge') && $('scenarioRetirementAge').value !== '') {
+    const ra = Math.round(num('scenarioRetirementAge'));
+    if (ra > base.youngestAge) {
+      overrides.yearsToRetirement = ra - base.youngestAge;
+      active.push({ label: 'retirement age', base: Math.round(base.youngestAge + base.yearsToRetirement), scen: ra });
+    }
+  }
+  if (on('lvSpendOn')) { const v = num('lvSpend'); overrides.desiredAnnualIncome = v; active.push({ label: 'annual spending', base: base.desiredAnnualIncome, scen: v, money: true }); }
+  if (on('lvConOn')) { const v = num('lvCon'); overrides.householdAnnual = v; active.push({ label: 'annual contributions', base: base.householdAnnual, scen: v, money: true }); }
+  if (on('lvRetnOn')) { const v = num('lvRetn'); overrides.baseReturn = v; active.push({ label: 'base return', base: base.baseReturn, scen: v, pct: true }); }
+  if (on('lvInflOn')) { const v = num('lvInfl'); overrides.baseInflation = v; active.push({ label: 'inflation', base: base.baseInflation, scen: v, pct: true }); }
+  if (on('lvWrOn')) { const v = num('lvWr'); overrides.withdrawalRate = v; active.push({ label: 'withdrawal rate', base: base.withdrawalRate, scen: v, pct: true }); }
+  return { overrides, active };
+}
+function whatIfChangeChip(delta, betterWhenNegative, text) {
+  if (delta == null || !isFinite(delta) || delta === 0) return '<span class="chip">no change</span>';
+  const improved = betterWhenNegative ? delta < 0 : delta > 0;
+  const icon = delta < 0 ? '▼' : '▲';
+  return `<span class="chip ${improved ? 'chip-good' : 'chip-bad'}">${icon} ${text}</span>`;
+}
+function whatIfAgeChange(b, s, unit) {
+  if (b == null && s == null) return '<span class="chip">no change</span>';
+  if (b == null && s != null) return '<span class="chip chip-good">▼ now reachable</span>';
+  if (b != null && s == null) return '<span class="chip chip-bad">▲ out of reach</span>';
+  const d = s - b;
+  if (Math.abs(d) < 0.05) return '<span class="chip">no change</span>';
+  return whatIfChangeChip(d, true, `${Math.abs(d).toFixed(1)} ${unit}${Math.abs(d) >= 2 ? 's' : ''} ${d < 0 ? 'earlier' : 'later'}`);
+}
+function whatIfMoneyChange(b, s, betterWhenNegative) {
+  const d = s - b;
+  if (Math.round(d) === 0) return '<span class="chip">no change</span>';
+  return whatIfChangeChip(d, betterWhenNegative, `${d < 0 ? '−' : '+'}${fmt$k(Math.abs(d))}`);
+}
+function whatIfSummary(active, baseFireAge, scenFireAge) {
+  if (!active.length) return 'Turn on a lever above to compare a scenario against your base plan — nothing here changes Your Target.';
+  const parts = active.map((a) => {
+    const fmtV = (v) => a.money ? fmt$k(v) : a.pct ? `${(+v).toFixed(1)}%` : v;
+    return `${a.label} ${fmtV(a.base)} → ${fmtV(a.scen)}`;
+  });
+  let effect;
+  if (baseFireAge == null && scenFireAge == null) effect = 'still does not reach Full FIRE by your retirement age in either case';
+  else if (baseFireAge == null) effect = `puts Full FIRE in reach by age ${fmtAge(scenFireAge)}`;
+  else if (scenFireAge == null) effect = 'pushes Full FIRE out of reach by your retirement age';
+  else if (Math.abs(scenFireAge - baseFireAge) < 0.05) effect = `leaves your projected FIRE age at ${fmtAge(baseFireAge)}`;
+  else effect = `moves your projected FIRE age from ${fmtAge(baseFireAge)} to ${fmtAge(scenFireAge)}`;
+  return `Changing ${parts.join(', ')} ${effect}.`;
+}
+function renderWhatIfComparison() {
+  const el = $('whatifCompare');
+  if (!el) return;
+  const base = buildInputs();
+  const { overrides, active } = readWhatIfLevers(base);
+  const scen = Object.assign({}, base, overrides);
+  const bf = forecast(base), sf = forecast(scen);
+  const fireAge = (fc) => (fc.milestones.full.ageHit != null ? fc.milestones.full.ageHit : null);
+  const coastAge = (fc) => fc.milestones.coast.coastAge;
+  const ageTxt = (a) => (a == null ? 'Not by retirement' : `Age ${fmtAge(a)}`);
+  const gapTxt = (g) => (g >= 0 ? `${fmt$k(g)} surplus` : `${fmt$k(-g)} short`);
+  const row = (label, b, s, change) =>
+    `<div class="cmp-row"><span class="cmp-label">${label}</span><span class="cmp-cell">${b}</span><span class="cmp-cell">${s}</span><span class="cmp-cell cmp-change">${change}</span></div>`;
+  const rows = [
+    row('Projected FIRE age', ageTxt(fireAge(bf)), ageTxt(fireAge(sf)), whatIfAgeChange(fireAge(bf), fireAge(sf), 'yr')),
+    row('Your FIRE target', fmt$k(bf.fullFire), fmt$k(sf.fullFire), whatIfMoneyChange(bf.fullFire, sf.fullFire, true)),
+    row('Coast FIRE age', ageTxt(coastAge(bf)), ageTxt(coastAge(sf)), whatIfAgeChange(coastAge(bf), coastAge(sf), 'yr')),
+    row('Retirement gap', gapTxt(bf.base.gap), gapTxt(sf.base.gap), whatIfMoneyChange(bf.base.gap, sf.base.gap, false)),
+  ].join('');
+  el.innerHTML = `
+    <div class="cmp-table">
+      <div class="cmp-row cmp-head"><span class="cmp-label"></span><span class="cmp-cell">Base</span><span class="cmp-cell">Scenario</span><span class="cmp-cell">Change</span></div>
+      ${rows}
+    </div>
+    <p class="cmp-summary">${whatIfSummary(active, fireAge(bf), fireAge(sf))}</p>`;
+}
+
 function renderScenarioPlayground() {
   if (!$('scenarioChart')) return;
+  renderWhatIfComparison();
   const base = buildInputs();
   // Apply the scenario-local retirement-age what-if to a COPY only. Both
   // forecast() and forecastWithEvents() derive retirement age purely from
@@ -3870,6 +3979,19 @@ if ($('scenarioRetirementAge')) {
   $('scenarioRetirementAge').addEventListener('input', (e) => { applyScenarioRetirementAge(); e.stopPropagation(); });
   $('scenarioRetirementAge').addEventListener('change', (e) => { syncScenarioRetirementAgeField(); e.stopPropagation(); });
 }
+
+// What-If lever toggles: enable/prefill the paired input, then recompute.
+const WHATIF_LEVERS = [['lvRetOn', 'scenarioRetirementAge'], ['lvSpendOn', 'lvSpend'], ['lvConOn', 'lvCon'], ['lvRetnOn', 'lvRetn'], ['lvInflOn', 'lvInfl'], ['lvWrOn', 'lvWr']];
+WHATIF_LEVERS.forEach(([cb, inp]) => {
+  if ($(cb)) $(cb).addEventListener('change', () => { onLeverToggle(cb, inp); recompute(); refreshActiveTab(); saveState(); });
+});
+if ($('resetLeversBtn')) $('resetLeversBtn').addEventListener('click', () => {
+  WHATIF_LEVERS.forEach(([cb, inp]) => { if ($(cb)) $(cb).checked = false; if ($(inp)) { $(inp).value = ''; $(inp).disabled = true; } });
+  scenarioRetirementAge = null;
+  recompute(); refreshActiveTab(); saveState();
+});
+// On load, engage the retirement-age lever if a saved override exists.
+if ($('lvRetOn') && scenarioRetirementAge != null) { $('lvRetOn').checked = true; if ($('scenarioRetirementAge')) $('scenarioRetirementAge').disabled = false; }
 
 // v2: money formatter — accept commas while preserving numeric calculations.
 document.addEventListener('blur', (e) => {

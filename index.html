@@ -493,13 +493,39 @@
     <div class="panel" id="scenarioInputs">
       <h2>Scenario playground</h2>
       <p class="strat-intro" style="margin-top:0">Stress-test your plan against life's curveballs. Your Target spending, ages, and assumptions carry over automatically; add events below and watch the impacted plan diverge from your baseline in real time.</p>
-      <div class="row">
-        <div class="field">
-          <label>Retirement age</label>
-          <input type="number" id="scenarioRetirementAge" data-nostate min="18" max="90" step="1" placeholder="Enter age">
+      <div class="streams-head">
+        <label style="font-size:13px;color:var(--muted)">Quick what-ifs <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">Temporary overlays on your saved base plan. Turn a lever on and set a value to see the impact — nothing here changes Your Target until you choose to.</span></span></label>
+      </div>
+      <div class="lever-list" id="leverList">
+        <div class="lever-row">
+          <label class="lever-toggle"><input type="checkbox" id="lvRetOn" data-nostate><span>Retirement age</span></label>
+          <input type="number" id="scenarioRetirementAge" data-nostate min="18" max="90" step="1" placeholder="—" disabled>
+        </div>
+        <div class="lever-row">
+          <label class="lever-toggle"><input type="checkbox" id="lvSpendOn" data-nostate><span>Annual retirement spending</span></label>
+          <input type="text" inputmode="decimal" id="lvSpend" data-nostate data-money placeholder="—" disabled>
+        </div>
+        <div class="lever-row">
+          <label class="lever-toggle"><input type="checkbox" id="lvConOn" data-nostate><span>Annual contributions</span></label>
+          <input type="text" inputmode="decimal" id="lvCon" data-nostate data-money placeholder="—" disabled>
+        </div>
+        <div class="lever-row">
+          <label class="lever-toggle"><input type="checkbox" id="lvRetnOn" data-nostate><span>Base return %</span></label>
+          <input type="number" id="lvRetn" data-nostate min="0" max="15" step="0.1" placeholder="—" disabled>
+        </div>
+        <div class="lever-row">
+          <label class="lever-toggle"><input type="checkbox" id="lvInflOn" data-nostate><span>Inflation %</span></label>
+          <input type="number" id="lvInfl" data-nostate min="0" max="10" step="0.1" placeholder="—" disabled>
+        </div>
+        <div class="lever-row">
+          <label class="lever-toggle"><input type="checkbox" id="lvWrOn" data-nostate><span>Withdrawal rate %</span></label>
+          <input type="number" id="lvWr" data-nostate min="2" max="6" step="0.1" placeholder="—" disabled>
         </div>
       </div>
-      <div class="streams-head">
+      <div class="lever-actions">
+        <button type="button" class="btn-link" id="resetLeversBtn">Reset what-ifs</button>
+      </div>
+      <div class="streams-head" style="margin-top:14px">
         <label style="font-size:13px;color:var(--muted)">Events</label>
         <div class="event-add-bar">
           <button type="button" class="btn-link add-event" data-type="correction">+ Market correction</button>
@@ -516,12 +542,16 @@
     <div class="results">
       <div class="assumptions-bar" id="assumptionsBarScenario"></div>
       <div class="panel">
-        <h2>Baseline vs impacted plan</h2>
+        <h2>Base vs scenario</h2>
+        <div id="whatifCompare"></div>
+      </div>
+      <div class="panel">
+        <h2>Baseline vs impacted plan (events)</h2>
         <div id="scenarioChart"></div>
         <div class="chart-legend" id="scenarioChartLegend"></div>
       </div>
       <div class="panel">
-        <h2>Impact summary</h2>
+        <h2>Event impact summary</h2>
         <div class="cards" id="scenarioSummary"></div>
       </div>
     </div>
