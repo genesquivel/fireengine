@@ -3473,10 +3473,37 @@ function deleteScenario() {
 let activeTab = 'goal';
 // The inflation toggle only changes anything on tabs that read inflMode.
 const INFLATION_AWARE_TABS = ['forecast', 'goal', 'scenario'];
+// Tabs that live under the Tools menu rather than the primary journey. Only
+// released tools appear here; the "Soon" items are disabled and never switch.
+const TOOL_TABS = ['debt'];
+
+// --- Tools dropdown open/close ----------------------------------------
+function openToolsMenu() {
+  const dd = $('toolsDropdown'); const trigger = $('toolsTrigger');
+  if (!dd || !trigger) return;
+  dd.hidden = false;
+  trigger.setAttribute('aria-expanded', 'true');
+}
+function closeToolsMenu() {
+  const dd = $('toolsDropdown'); const trigger = $('toolsTrigger');
+  if (!dd || !trigger) return;
+  dd.hidden = true;
+  trigger.setAttribute('aria-expanded', 'false');
+}
+function toggleToolsMenu() {
+  const dd = $('toolsDropdown');
+  if (dd && dd.hidden) openToolsMenu(); else closeToolsMenu();
+}
 
 function switchTab(name) {
   activeTab = name;
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
+  // Accessible selected state on the primary step tabs.
+  document.querySelectorAll('.tab[data-tab][role="tab"]').forEach((t) => t.setAttribute('aria-selected', t.dataset.tab === name ? 'true' : 'false'));
+  // The Tools trigger reflects an active state whenever a tool tab is showing.
+  const toolsTrigger = $('toolsTrigger');
+  if (toolsTrigger) toolsTrigger.classList.toggle('active', TOOL_TABS.includes(name));
+  closeToolsMenu();
   document.querySelectorAll('.tab-panel').forEach((p) => p.classList.toggle('hidden', p.id !== `tab-${name}`));
   if ($('globalControls')) $('globalControls').classList.toggle('hidden', !INFLATION_AWARE_TABS.includes(name));
   if (name === 'debt') renderLumps(); // render the dynamic table once on entry
@@ -3519,6 +3546,41 @@ $('scenarioNameInput').addEventListener('keydown', (e) => {
 });
 $('scenarioSelect').addEventListener('change', (e) => loadScenario(e.target.value));
 document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+
+// --- Tools dropdown wiring --------------------------------------------
+if ($('toolsTrigger')) {
+  $('toolsTrigger').addEventListener('click', (e) => { e.stopPropagation(); toggleToolsMenu(); });
+  // Click outside closes the menu.
+  document.addEventListener('click', (e) => {
+    const menu = $('toolsMenu');
+    if (menu && !menu.contains(e.target)) closeToolsMenu();
+  });
+  // Escape closes and returns focus to the trigger.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('toolsDropdown').hidden) { closeToolsMenu(); $('toolsTrigger').focus(); }
+  });
+}
+
+// --- Forward step CTAs: append a "next step" bar to each primary panel -
+// Keeps the Target -> Timeline -> What-If journey obvious. Injected in JS so
+// the CTA always lands full-width below the panel's grid columns.
+function injectStepCta(panelId, ctas) {
+  const panel = $(panelId);
+  if (!panel || panel.querySelector('.step-cta-bar')) return;
+  const bar = document.createElement('div');
+  bar.className = 'step-cta-bar';
+  ctas.forEach((c) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'step-cta' + (c.secondary ? ' secondary' : '');
+    btn.textContent = c.label;
+    btn.addEventListener('click', () => { switchTab(c.target); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+    bar.appendChild(btn);
+  });
+  panel.appendChild(bar);
+}
+injectStepCta('tab-goal', [{ label: 'See when you’ll reach it →', target: 'forecast' }]);
+injectStepCta('tab-forecast', [{ label: 'Explore ways to reach it sooner →', target: 'scenario' }]);
 document.querySelectorAll('.add-acct').forEach((b) => b.addEventListener('click', () => addGroup(b.dataset.type)));
 $('addStreamBtn').addEventListener('click', addStream);
 $('addLumpBtn').addEventListener('click', addLump);

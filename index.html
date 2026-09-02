@@ -6,7 +6,7 @@
   <title>The FIRE Engine — Retirement Forecaster</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="apple-touch-icon" href="favicon.svg" />
-  <link rel="stylesheet" href="styles.css?v=77" />
+  <link rel="stylesheet" href="styles.css?v=78" />
 </head>
 <body>
   <header>
@@ -41,13 +41,18 @@
       <button type="button" id="rerunWizardBtn" class="rerun-wizard">↻ Re-run Quick Setup</button>
     </div>
     <p>Project your retirement, see your FIRE milestones, and adjust the levers in real time. Ranges show a band of <em>assumptions</em>, not probabilities.</p>
-    <nav class="tabs">
-      <button type="button" class="tab active" data-tab="goal">Goal Builder</button>
-      <button type="button" class="tab" data-tab="forecast">FIRE Forecast</button>
-      <button type="button" class="tab" data-tab="scenario">Scenario Playground</button>
-      <button type="button" class="tab" data-tab="debt">Debt Destroyer</button>
-      <button type="button" class="tab" data-tab="hustle">Path to Independence <span class="in-progress-badge">In Progress</span></button>
-      <button type="button" class="tab" data-tab="strategy">Spending strategy <span class="in-progress-badge">In Progress</span></button>
+    <nav class="tabs primary-nav" role="tablist" aria-label="Primary planning steps">
+      <button type="button" class="tab active" data-tab="goal" role="tab" aria-selected="true">1. Your Target</button>
+      <button type="button" class="tab" data-tab="forecast" role="tab" aria-selected="false">2. Your Timeline</button>
+      <button type="button" class="tab" data-tab="scenario" role="tab" aria-selected="false">3. What-If</button>
+      <div class="tools-menu" id="toolsMenu">
+        <button type="button" class="tools-trigger" id="toolsTrigger" aria-haspopup="true" aria-expanded="false" aria-controls="toolsDropdown">Tools <span class="tools-caret" aria-hidden="true">▾</span></button>
+        <div class="tools-dropdown" id="toolsDropdown" role="menu" aria-label="Tools" hidden>
+          <button type="button" class="tab tool-item" data-tab="debt" role="menuitem">Debt Destroyer</button>
+          <button type="button" class="tool-item" role="menuitem" disabled aria-disabled="true">Spending Strategy <span class="soon-badge">Soon</span></button>
+          <button type="button" class="tool-item" role="menuitem" disabled aria-disabled="true">Path to Independence <span class="soon-badge">Soon</span></button>
+        </div>
+      </div>
     </nav>
     <div class="global-controls" id="globalControls">
       <span class="gc-label">Show dollars as</span>
@@ -701,9 +706,9 @@
     </div>
   </div>
 
-  <script src="config.js?v=77"></script>
-  <script src="accounts.js?v=77"></script>
-  <script src="calc.js?v=77"></script>
-  <script src="app.js?v=77"></script>
+  <script src="config.js?v=78"></script>
+  <script src="accounts.js?v=78"></script>
+  <script src="calc.js?v=78"></script>
+  <script src="app.js?v=78"></script>
 </body>
 </html>
