@@ -6,7 +6,7 @@
   <title>The FIRE Engine — Retirement Forecaster</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="apple-touch-icon" href="favicon.svg" />
-  <link rel="stylesheet" href="styles.css?v=79" />
+  <link rel="stylesheet" href="styles.css?v=80" />
 </head>
 <body>
   <header>
@@ -143,12 +143,8 @@
       <input type="hidden" id="con" value="26400">
 
       <h2 style="margin-top:20px">Goals &amp; spending</h2>
-      <div class="field"><label>Annual retirement spending ($/yr in today's $) <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">Timeline-only — NOT auto-synced from Your Target. It only changes when you click "Use Your Target spending" below; drives this tab's gap banner, FIRE milestones, and Full FIRE target.</span></span></label><input type="text" inputmode="decimal" id="desired" value="80,000" min="0" step="1000" data-money></div>
-      <div class="pull-goal-row">
-        <button type="button" class="pull-goal-btn">⬇ Use Your Target spending</button>
-        <span class="pull-confirm"></span>
-      </div>
-      <p class="synced-note" style="margin-bottom:6px">Lean/Fat spend come from Your Target's tier pills (COL-adjusted). <a href="#" class="edit-in-goal-link" data-jump-tab="goal">Edit in Your Target ↗</a></p>
+      <div class="field"><label>Annual retirement spending ($/yr in today's $) <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">Set in Your Target and used here automatically — the duration-weighted blend of the spending you mapped in Your Target. Drives the gap banner, FIRE milestones, and Full FIRE target.</span></span></label><input type="text" inputmode="decimal" id="desired" value="65,000" min="0" step="1000" data-money readonly class="synced-field"></div>
+      <p class="synced-note" style="margin-bottom:6px">Set in <strong>Your Target</strong> — edits there flow here automatically. Lean/Fat spend come from its tier pills (COL-adjusted). <a href="#" class="edit-in-goal-link" data-jump-tab="goal">Edit in Your Target ↗</a></p>
       <div class="field"><label>Lean FIRE spend ($/yr)</label><input type="text" inputmode="decimal" id="lean" value="45,000" min="0" step="1000" data-money readonly class="synced-field"></div>
       <div class="field"><label>Fat FIRE spend ($/yr)</label><input type="text" inputmode="decimal" id="fat" value="140,000" min="0" step="1000" data-money readonly class="synced-field"></div>
       <div class="field"><label>Years in retirement <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">Timeline-only — sets how far the chart/runway/audit run. Defaults to roughly age 95 based on your retirement age; raise the max yourself for a longer or shorter view. Your Target's own Spending Timeline and FIRE targets always plan through age 95 regardless of this field.</span></span></label><input type="number" id="retYears" value="30" min="5" max="75"></div>
@@ -427,10 +423,6 @@
       <div class="panel">
         <h2>How to spend it once you reach FIRE</h2>
         <p class="strat-intro" id="stratIntro"></p>
-        <div class="pull-goal-row">
-          <button type="button" class="pull-goal-btn">⬇ Use Your Target spending</button>
-          <span class="pull-confirm"></span>
-        </div>
         <p class="strat-note">These are educational frameworks, not personalized tax or investment advice — confirm specifics with a fiduciary advisor or CPA before acting.</p>
       </div>
       <div id="strategyBody"></div>
@@ -495,11 +487,7 @@
     <!-- INPUTS -->
     <div class="panel" id="scenarioInputs">
       <h2>Scenario playground</h2>
-      <p class="strat-intro" style="margin-top:0">Stress-test your plan against life's curveballs. Add events below and watch the impacted plan diverge from your baseline in real time.</p>
-      <div class="pull-goal-row">
-        <button type="button" class="pull-goal-btn">⬇ Use Your Target spending</button>
-        <span class="pull-confirm"></span>
-      </div>
+      <p class="strat-intro" style="margin-top:0">Stress-test your plan against life's curveballs. Your Target spending, ages, and assumptions carry over automatically; add events below and watch the impacted plan diverge from your baseline in real time.</p>
       <div class="row">
         <div class="field">
           <label>Retirement age</label>
@@ -707,9 +695,9 @@
     </div>
   </div>
 
-  <script src="config.js?v=79"></script>
-  <script src="accounts.js?v=79"></script>
-  <script src="calc.js?v=79"></script>
-  <script src="app.js?v=79"></script>
+  <script src="config.js?v=80"></script>
+  <script src="accounts.js?v=80"></script>
+  <script src="calc.js?v=80"></script>
+  <script src="app.js?v=80"></script>
 </body>
 </html>
