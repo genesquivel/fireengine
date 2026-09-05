@@ -6,7 +6,7 @@
   <title>The FIRE Engine — Retirement Forecaster</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="apple-touch-icon" href="favicon.svg" />
-  <link rel="stylesheet" href="styles.css?v=81" />
+  <link rel="stylesheet" href="styles.css?v=82" />
 </head>
 <body>
   <header>
@@ -62,6 +62,9 @@
       </div>
     </div>
   </header>
+
+  <!-- Debounced screen-reader announcement of the live verdict headline. -->
+  <div id="headlineLive" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
   <div class="layout tab-panel hidden" id="tab-forecast">
     <!-- INPUTS -->
@@ -210,6 +213,14 @@
         <input type="hidden" id="ageShift" data-nostate min="-10" max="15" value="0">
       </div>
 
+      <div class="flow-verdict">
+        <p class="flow-headline" id="forecastHeadline"></p>
+        <div class="verdict-actions">
+          <button type="button" class="copy-link-btn" data-flow="forecast">🔗 Copy scenario link</button>
+          <span class="copy-link-note">Your numbers never leave your browser — the link just encodes your inputs.</span>
+        </div>
+      </div>
+
       <div class="gap-banner" id="gapBanner"></div>
       <div class="gap-banner hidden" id="fireWarning"></div>
 
@@ -263,6 +274,13 @@
   <div class="layout goal-layout tab-panel" id="tab-goal">
     <!-- RESULTS (DOM-first: screen readers / mobile get Summary → Timeline → Inputs) -->
     <div class="results goal-results" id="goalResults">
+      <div class="flow-verdict">
+        <p class="flow-headline" id="goalHeadline"></p>
+        <div class="verdict-actions">
+          <button type="button" class="copy-link-btn" data-flow="goal">🔗 Copy scenario link</button>
+          <span class="copy-link-note">Your numbers never leave your browser — the link just encodes your inputs.</span>
+        </div>
+      </div>
       <div class="assumptions-bar" id="assumptionsBarGoal"></div>
       <div class="panel" id="goal-summary">
         <h2>Goal summary</h2>
@@ -540,6 +558,14 @@
 
     <!-- RESULTS -->
     <div class="results">
+      <div class="flow-verdict">
+        <p class="flow-headline" id="scenarioHeadline"></p>
+        <div class="verdict-actions">
+          <button type="button" class="copy-link-btn" data-flow="scenario">🔗 Copy scenario link</button>
+          <button type="button" class="copy-link-btn" data-flow="scenario-compare">🔗 Copy comparison</button>
+          <span class="copy-link-note">Your numbers never leave your browser — the link just encodes your inputs.</span>
+        </div>
+      </div>
       <div class="assumptions-bar" id="assumptionsBarScenario"></div>
       <div class="panel">
         <h2>Base vs scenario</h2>
@@ -685,9 +711,9 @@
     </div>
   </div>
 
-  <script src="config.js?v=81"></script>
-  <script src="accounts.js?v=81"></script>
-  <script src="calc.js?v=81"></script>
-  <script src="app.js?v=81"></script>
+  <script src="config.js?v=82"></script>
+  <script src="accounts.js?v=82"></script>
+  <script src="calc.js?v=82"></script>
+  <script src="app.js?v=82"></script>
 </body>
 </html>

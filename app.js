@@ -953,6 +953,52 @@ function earlyPenaltyContext(retAge, years, ret) {
   return { rate, exempt };
 }
 
+// --- Live verdict headlines -------------------------------------------------
+// Every flow leads with one plain-language verdict that recomputes live. The
+// visible text updates on every keystroke; the screen-reader announcement is
+// debounced ~150ms so assistive tech doesn't chatter on each character.
+let _announceTimer = null;
+function announceHeadline(text) {
+  if (_announceTimer) clearTimeout(_announceTimer);
+  _announceTimer = setTimeout(() => { const el = $('headlineLive'); if (el) el.textContent = text; }, 150);
+}
+function setHeadline(id, text, empty) {
+  const el = $(id);
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle('flow-headline-empty', !!empty);
+  if (`${activeTab}Headline` === id) announceHeadline(text);
+}
+const EMPTY_HEADLINE = "Tell us your spending and we'll do the math.";
+function renderGoalHeadline(f, inputs) {
+  const spend = inputs.desiredAnnualIncome;
+  if (!(spend > 0)) return setHeadline('goalHeadline', EMPTY_HEADLINE, true);
+  const monthly = Math.round(spend / 12);
+  setHeadline('goalHeadline', `Your FIRE number is ${fmt$k(f.fullFire)} — that's $${monthly.toLocaleString('en-US')}/mo of spending, funded forever.`);
+}
+function renderForecastHeadline(f, inputs) {
+  const spend = inputs.desiredAnnualIncome;
+  if (!(spend > 0)) return setHeadline('forecastHeadline', EMPTY_HEADLINE, true);
+  const age = f.milestones.full.ageHit;
+  if (age == null) return setHeadline('forecastHeadline', "On this plan your portfolio doesn't reach your FIRE number by your target retirement age.");
+  const years = age - inputs.youngestAge;
+  if (years <= 0.05) return setHeadline('forecastHeadline', "You're already at your FIRE number today.");
+  setHeadline('forecastHeadline', `You can retire in ${years.toFixed(1)} years at age ${Math.round(age)}.`);
+}
+function renderScenarioHeadline(bf, sf, active) {
+  const ba = bf.milestones.full.ageHit, sa = sf.milestones.full.ageHit;
+  if (!active.length) {
+    if (ba == null) return setHeadline('scenarioHeadline', 'Turn on a lever to see how it changes your plan.', true);
+    return setHeadline('scenarioHeadline', `On your base plan you reach FIRE at age ${Math.round(ba)}.`);
+  }
+  if (ba == null && sa == null) return setHeadline('scenarioHeadline', "This scenario still doesn't reach FIRE by your retirement age.");
+  if (ba == null) return setHeadline('scenarioHeadline', `This scenario puts FIRE in reach at age ${Math.round(sa)}.`);
+  if (sa == null) return setHeadline('scenarioHeadline', 'This scenario pushes FIRE out of reach by your retirement age.');
+  const d = ba - sa; // positive → sooner
+  if (Math.abs(d) < 0.05) return setHeadline('scenarioHeadline', `Same timing — still age ${Math.round(ba)}.`);
+  setHeadline('scenarioHeadline', `${Math.abs(d).toFixed(1)} years ${d > 0 ? 'sooner' : 'later'} — age ${Math.round(sa)} instead of ${Math.round(ba)}.`);
+}
+
 function renderGap(base, inputs) {
   const banner = $('gapBanner');
   const surplus = base.gap >= 0;
@@ -2103,6 +2149,8 @@ function recompute() {
   renderBalances(f);
   renderFire(f.milestones);
   renderCoast(f, inputs);
+  renderGoalHeadline(f, inputs);
+  renderForecastHeadline(f, inputs);
   renderAudit(f, inputs);
   renderForecastFireBreakdown(f, inputs);
   updatePullGoalButtons();
@@ -3159,6 +3207,7 @@ function renderWhatIfComparison() {
   const { overrides, active } = readWhatIfLevers(base);
   const scen = Object.assign({}, base, overrides);
   const bf = forecast(base), sf = forecast(scen);
+  renderScenarioHeadline(bf, sf, active);
   const fireAge = (fc) => (fc.milestones.full.ageHit != null ? fc.milestones.full.ageHit : null);
   const coastAge = (fc) => fc.milestones.coast.coastAge;
   const ageTxt = (a) => (a == null ? 'Not by retirement' : `Age ${fmtAge(a)}`);
@@ -3653,6 +3702,95 @@ function afterStateChange() {
   recompute();
   refreshActiveTab();
   saveState();
+}
+
+// --- Shareable scenario links (short, versioned query params) ----------------
+// Encodes the core plan into readable params (?v=1&age=32&spend=80000&wr=4...)
+// so a link fully reproduces a scenario, client-side, no backend. v= is a
+// version tag so future key changes stay backward compatible.
+const SCENARIO_LINK_VERSION = '1';
+function round1(n) { return Math.round(n * 10) / 10; }
+function scenarioToParams(includeLevers) {
+  const p = new URLSearchParams();
+  p.set('v', SCENARIO_LINK_VERSION);
+  const couple = $('goalHousehold') && $('goalHousehold').value === 'couple';
+  const rd = (id, fb) => Math.round(($(id) ? num(id) : (fb ? num(fb) : 0)) || 0);
+  if (couple) p.set('hh', 'c');
+  p.set('age', rd('goalAgeA', 'ageA'));
+  p.set('ret', rd('goalRetA', 'retA'));
+  if (couple) { p.set('ageb', rd('goalAgeB', 'ageB')); p.set('retb', rd('goalRetB', 'retB')); }
+  const phases = goalPhases();
+  p.set('spend', Math.round(phases.length ? blendedDesiredIncome(phases) : num('desired')));
+  p.set('wr', round1(num('withdrawalRate')));
+  p.set('rr', round1(num('returnRate')));
+  p.set('inf', round1(num('inflation')));
+  p.set('bal', Math.round(num('bal')));
+  p.set('save', Math.round(num('con')));
+  const zip = $('goalZip') ? $('goalZip').value.replace(/\D/g, '') : '';
+  if (zip.length === 5) p.set('zip', zip);
+  if (includeLevers) {
+    const base = buildInputs();
+    const { overrides } = readWhatIfLevers(base);
+    if (overrides.yearsToRetirement != null) p.set('lret', Math.round(base.youngestAge + overrides.yearsToRetirement));
+    if (overrides.desiredAnnualIncome != null) p.set('lspend', Math.round(overrides.desiredAnnualIncome));
+    if (overrides.householdAnnual != null) p.set('lcon', Math.round(overrides.householdAnnual));
+    if (overrides.baseReturn != null) p.set('lrr', round1(overrides.baseReturn));
+    if (overrides.baseInflation != null) p.set('linf', round1(overrides.baseInflation));
+    if (overrides.withdrawalRate != null) p.set('lwr', round1(overrides.withdrawalRate));
+  }
+  return p;
+}
+function copyScenarioLink(flow) {
+  const includeLevers = flow === 'scenario' || flow === 'scenario-compare';
+  const url = `${location.origin}${location.pathname}?${scenarioToParams(includeLevers).toString()}`;
+  if (url.length > 2000) { flashStatus('Too much detail for a link — try fewer income streams'); return; }
+  history.pushState(null, '', url); // so back/forward steps through link changes
+  const msg = flow === 'scenario-compare'
+    ? 'Comparison link copied — share it with your partner or bookmark it.'
+    : 'Link copied — share it with your partner or bookmark it.';
+  if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => flashStatus(msg), () => flashStatus('Link in address bar'));
+  else flashStatus('Link in address bar');
+}
+// Parse ?v= scenario params into the app. Missing/invalid params keep their
+// current default (never crash); a malformed link toasts and falls back.
+function hydrateFromScenarioParams() {
+  const q = new URLSearchParams(location.search);
+  if (q.get('v') == null) return false;
+  try {
+    const n = (k) => { const v = q.get(k); if (v == null || v === '') return null; const x = parseFloat(v); return isFinite(x) ? x : null; };
+    const setIf = (id, v) => { if ($(id) && v != null) $(id).value = v; };
+    const couple = q.get('hh') === 'c';
+    if ($('goalHousehold')) $('goalHousehold').value = couple ? 'couple' : 'single';
+    setIf('goalAgeA', n('age')); setIf('goalRetA', n('ret'));
+    if (couple) { setIf('goalAgeB', n('ageb')); setIf('goalRetB', n('retb')); }
+    setIf('withdrawalRate', n('wr')); setIf('returnRate', n('rr')); setIf('inflation', n('inf'));
+    setIf('bal', n('bal') != null ? Math.round(n('bal')) : null);
+    setIf('con', n('save') != null ? Math.round(n('save')) : null);
+    // Apply the ZIP (and rescale categories) BEFORE seeding the spend phase, so
+    // the later recompute sees an unchanged ZIP and doesn't rescale over it.
+    const zip = q.get('zip');
+    if (zip && /^\d{5}$/.test(zip) && $('goalZip')) { $('goalZip').value = zip; if (typeof refreshLocation === 'function') refreshLocation(); }
+    const spend = n('spend');
+    if (spend != null && spend > 0) spendingPhases = [makePhase({ name: 'Retirement spending', annualSpend: Math.round(spend), years: phaseDefaults()[0].years, info: phaseDefaults()[0].info })];
+    accountGroups = [migrateLegacy(Math.round(n('bal') || 0), Math.round(n('save') || 0), { name: 'Retirement savings' })];
+    // What-If levers (present only on scenario/comparison links).
+    const lever = (cb, inp, key, money) => {
+      const v = n(key); if (v == null) return;
+      if ($(cb)) $(cb).checked = true;
+      if ($(inp)) { $(inp).disabled = false; $(inp).value = money ? fmtInput(Math.round(v)) : v; }
+    };
+    lever('lvRetOn', 'scenarioRetirementAge', 'lret', false);
+    lever('lvSpendOn', 'lvSpend', 'lspend', true);
+    lever('lvConOn', 'lvCon', 'lcon', true);
+    lever('lvRetnOn', 'lvRetn', 'lrr', false);
+    lever('lvInflOn', 'lvInfl', 'linf', false);
+    lever('lvWrOn', 'lvWr', 'lwr', false);
+    if (n('lret') != null && typeof applyScenarioRetirementAge === 'function') applyScenarioRetirementAge();
+    return true;
+  } catch (e) {
+    setTimeout(() => flashStatus("Couldn't read that scenario link — starting from defaults"), 300);
+    return false;
+  }
 }
 
 // --- Named scenarios (multiple saved slots) ----------------------------
@@ -4284,6 +4422,9 @@ if ($('retYears') && $('retYears').value === '30') {
   const retAge = goalBuilderRetirementAge();
   $('retYears').value = Math.min(75, Math.max(10, Math.round(95 - retAge)));
 }
+// A short-key scenario link (?v=1&…) hydrates last so it wins over saved state.
+const __hadScenarioLink = hydrateFromScenarioParams();
+if (__hadScenarioLink) { toggleCouple(); toggleGoalCouple(); renderAccounts(); syncLegacyFields(); renderPhases(); }
 if ($('globalControls')) $('globalControls').classList.toggle('hidden', !INFLATION_AWARE_TABS.includes(activeTab));
 recompute();
 formatMoneyInputs();
@@ -4291,7 +4432,19 @@ formatMoneyInputs();
 // source of truth here — switchTab toggles panel visibility AND renders the active
 // secondary tab, so the landing page actually shows Goal Builder, not Forecast.
 switchTab(activeTab);
+if (__hadScenarioLink) setTimeout(() => flashStatus('Scenario loaded from link ✓'), 250);
 
-// First-run onboarding: show the wizard when there's no saved scenario and the
-// page wasn't opened from a share link.
-if (!__saved && !__hadShare) openWizard(false);
+// Copy scenario/comparison link buttons.
+document.querySelectorAll('.copy-link-btn').forEach((btn) => btn.addEventListener('click', () => copyScenarioLink(btn.dataset.flow)));
+// Back/forward through scenario-link changes re-hydrates from the URL.
+window.addEventListener('popstate', () => {
+  if (new URLSearchParams(location.search).get('v') != null) {
+    hydrateFromScenarioParams();
+    toggleCouple(); toggleGoalCouple(); renderAccounts(); syncLegacyFields(); renderPhases();
+    recompute(); refreshActiveTab(); saveState();
+  }
+});
+
+// First-run onboarding: show the wizard when there's no saved scenario, no
+// share link, and no scenario link.
+if (!__saved && !__hadShare && !__hadScenarioLink) openWizard(false);
