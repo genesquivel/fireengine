@@ -368,7 +368,37 @@ input[aria-invalid="true"] { border-color: var(--bad) !important; }
 .ac-warn { font-size: 12px; color: var(--warn); margin-top: 8px; background: rgba(182,121,31,.08); border: 1px solid rgba(182,121,31,.3); border-radius: 6px; padding: 6px 8px; }
 .ac-hint { font-size: 12px; color: var(--muted); margin-top: 8px; background: var(--panel); border: 1px dashed var(--border); border-radius: 6px; padding: 6px 8px; }
 .account-card .ac-owner { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; color: var(--accent); font-size: 12px; padding: 4px 6px; font-weight: 600; }
-.accounts-total { display: flex; justify-content: space-between; font-size: 13px; padding: 10px 12px; border-top: 2px solid var(--border); margin-top: 4px; font-variant-numeric: tabular-nums; }
+.accounts-total { display: flex; flex-direction: column; gap: 4px; font-size: 13px; padding: 10px 12px; border-top: 2px solid var(--border); margin-top: 4px; font-variant-numeric: tabular-nums; }
+
+/* --- Owner-aware accounts ------------------------------------------- */
+.owner-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 24px; height: 24px; padding: 0 7px; border-radius: 999px;
+  font-size: 11px; font-weight: 800; color: #fff; flex-shrink: 0; letter-spacing: .02em;
+}
+.owner-you { background: #4b3fe4; }
+.owner-partner { background: #0d9488; }
+.owner-joint { background: #b6791f; }
+
+.add-for { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.add-for select { min-height: 40px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; font-size: 14px; }
+
+.acct-filter { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px; }
+.filter-chip { border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 999px; padding: 8px 14px; min-height: 40px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.filter-chip:hover { border-color: var(--accent); }
+.filter-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.ac-owner-field { margin: 6px 0 8px; }
+.ac-owner-field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.ac-owner-field select.ac-owner { width: 100%; min-height: 44px; font-size: 15px; font-weight: 600; padding: 8px 10px; }
+.ac-owner-help { font-size: 11px; color: var(--muted); margin: 4px 0 0; line-height: 1.4; }
+.ac-split-hint { font-size: 11px; color: var(--muted); margin: 8px 0 2px; }
+.sub-cat.needs-pick { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+.acct-subtotal { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.acct-subtotal .st-label { flex: 1; }
+.acct-subtotal .st-vals { font-variant-numeric: tabular-nums; color: var(--text); }
+.acct-household { display: flex; justify-content: space-between; align-items: center; padding-top: 6px; border-top: 1px solid var(--border); margin-top: 2px; }
 .accounts-total strong { color: var(--text); }
 
 /* Income streams */
