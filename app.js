@@ -1936,7 +1936,7 @@ function taxAdvantagedRoom() {
       cap = IRS_LIMITS.ira_combined + catchUpIRA(ownerAge);
       used = g.subAccounts.filter((s) => s.deferral).reduce((s, a) => s + getContribution(a, CURRENT_YEAR), 0);
     } else if (g.type === 'hsa') {
-      cap = IRS_LIMITS.hsa_self + catchUpHSA(ownerAge);
+      cap = (g.owner === 'joint' ? IRS_LIMITS.hsa_family : IRS_LIMITS.hsa_self) + catchUpHSA(ownerAge);
       used = g.subAccounts.filter((s) => s.deferral).reduce((s, a) => s + getContribution(a, CURRENT_YEAR), 0);
     }
     if (cap != null) {
@@ -2306,6 +2306,7 @@ const ACCT_TYPES = [['401k', '401(k)'], ['403b', '403(b)'], ['457b', '457(b)'], 
 
 let accountGroups = [];               // array of AccountGroup (from accounts.js)
 const collapsedGroups = new Set();    // UI-only: which cards are collapsed
+let accountFilter = 'all';            // UI-only: All | you | partner | joint
 
 function escAttr(s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
 
@@ -2331,23 +2332,61 @@ function syncLegacyFields() {
 }
 
 function subRowHTML(gid, s, groupType) {
-  const cats = categoryOptionsFor(groupType, s.category).map(([v, l]) => `<option value="${v}" ${s.category === v ? 'selected' : ''}>${l}</option>`).join('');
+  const needsPick = !s.category;
+  const placeholder = needsPick ? '<option value="" disabled selected>— Choose a source —</option>' : '';
+  const cats = placeholder + categoryOptionsFor(groupType, s.category).map(([v, l]) => `<option value="${v}" ${s.category === v ? 'selected' : ''}>${l}</option>`).join('');
   return `<div class="sub-row" data-sid="${s.id}">
-    <select class="sub-cat" data-gid="${gid}" data-sid="${s.id}">${cats}</select>
-    <input class="sub-bal" type="number" min="0" step="1000" data-gid="${gid}" data-sid="${s.id}" value="${s.balance}">
-    <input class="sub-con" type="number" min="0" step="500" data-gid="${gid}" data-sid="${s.id}" value="${s.baseContribution}">
-    <button type="button" class="x remove-sub-btn" data-gid="${gid}" data-sid="${s.id}" title="Remove treatment">×</button>
+    <select class="sub-cat ${needsPick ? 'needs-pick' : ''}" data-gid="${gid}" data-sid="${s.id}" aria-label="Tax treatment / source">${cats}</select>
+    <input class="sub-bal" type="number" min="0" step="1000" data-gid="${gid}" data-sid="${s.id}" value="${s.balance}" aria-label="Balance ($)">
+    <input class="sub-con" type="number" min="0" step="500" data-gid="${gid}" data-sid="${s.id}" value="${s.baseContribution}" aria-label="Annual contribution ($)">
+    <button type="button" class="x remove-sub-btn" data-gid="${gid}" data-sid="${s.id}" title="Remove treatment" aria-label="Remove this tax treatment">×</button>
   </div>`;
 }
 
-const OWNER_OPTIONS = [['you', 'You'], ['partner', 'Partner'], ['joint', 'Joint']];
+// Person names: match the household section's vocabulary exactly. (Hook for
+// custom member names if that ever exists — falls back to Person A/B.)
+function personName(which) { return which === 'B' ? 'Person B' : 'Person A'; }
+const OWNER_LABEL = { you: `${personName('A')} (You)`, partner: `${personName('B')} (Partner)`, joint: 'Joint' };
+const OWNER_BADGE = { you: 'A', partner: 'B', joint: 'Joint' };
+const OWNER_OPTIONS = [['you', OWNER_LABEL.you], ['partner', OWNER_LABEL.partner], ['joint', OWNER_LABEL.joint]];
+// Account types that can actually be jointly owned. 401(k)/403(b)/457(b)/TSP/IRA
+// are individual by law; Joint on those means "family HSA-style" only where it
+// makes sense (HSA), so those plans disable Joint with an inline reason.
+const JOINT_OK_TYPES = ['hsa', 'brokerage', 'savings', 'other'];
+function jointAllowed(type) { return JOINT_OK_TYPES.includes(type); }
+// The owner most recently added or edited — new accounts inherit it so adding
+// five Partner accounts never means flipping five dropdowns.
+let lastEditedOwner = 'you';
+// Append the owner as a name suffix when it isn't the default Person A.
+function ownerSuffixedName(baseName, owner) {
+  if (owner === 'you') return baseName;
+  return `${baseName} — ${owner === 'partner' ? personName('B') : 'Joint'}`;
+}
+// HSA coverage tier for limit checks: a Joint HSA is a family HSA.
+function hsaCoverageFor(group) { return group.owner === 'joint' ? 'family' : 'self'; }
+// Re-apply the owner name suffix when the owner changes, but only if the name
+// is still the auto-generated one (never clobber a name the user customized).
+function reSuggestAccountName(g, oldOwner) {
+  const base = (ADD_ACCT_DEFAULTS[g.type] || {}).name || g.type;
+  if (g.name === base || g.name === ownerSuffixedName(base, oldOwner)) g.name = ownerSuffixedName(base, g.owner);
+}
 
 function groupCardHTML(group, isCouple) {
   const collapsed = collapsedGroups.has(group.id);
   const types = ACCT_TYPES.map(([v, l]) => `<option value="${v}" ${group.type === v ? 'selected' : ''}>${l}</option>`).join('');
-  const owners = OWNER_OPTIONS.map(([v, l]) => `<option value="${v}" ${group.owner === v ? 'selected' : ''}>${l}</option>`).join('');
-  const ownerSelect = isCouple
-    ? `<select class="ac-owner" data-gid="${group.id}" aria-label="Account owner" title="Whose per-person limits apply">${owners}</select>`
+  const jointOk = jointAllowed(group.type);
+  const owners = OWNER_OPTIONS.map(([v, l]) =>
+    `<option value="${v}" ${group.owner === v ? 'selected' : ''} ${(v === 'joint' && !jointOk) ? 'disabled' : ''}>${l}</option>`).join('');
+  // Owner is set in the body as a labeled field (honest about what it does);
+  // the always-visible badge in the header is the at-a-glance indicator.
+  const ownerField = isCouple ? `
+    <div class="ac-owner-field">
+      <label for="owner_${group.id}">Contributions attributed to</label>
+      <select class="ac-owner" id="owner_${group.id}" data-gid="${group.id}">${owners}</select>
+      <p class="ac-owner-help">Used for per-person limits; the portfolio itself is shared.${jointOk ? '' : ' Joint isn’t available for this type — 401(k)/IRA-style plans are individually owned.'}</p>
+    </div>` : '';
+  const ownerBadge = isCouple
+    ? `<span class="owner-badge owner-${group.owner}" title="${OWNER_LABEL[group.owner]}">${OWNER_BADGE[group.owner]}</span>`
     : '';
   const subs = group.subAccounts.map((s) => subRowHTML(group.id, s, group.type)).join('');
   // Public-sector toggles: agency matching (TSP/403(b)) and 457(b) penalty-free
@@ -2358,15 +2397,17 @@ function groupCardHTML(group, isCouple) {
   } else if (group.type === '457b') {
     flagsHTML = `<label class="ac-flag"><input type="checkbox" class="ac-penalty-free" data-gid="${group.id}" ${group.penaltyFreeSeparation ? 'checked' : ''}> Penalty-free withdrawal upon separation</label>`;
   }
-  return `<div class="account-card ${collapsed ? 'collapsed' : 'open'}" data-gid="${group.id}">
+  return `<div class="account-card ${collapsed ? 'collapsed' : 'open'}" data-gid="${group.id}" data-owner="${group.owner}">
     <div class="ac-head">
       <span class="twist">▶</span>
+      ${ownerBadge}
       <input class="ac-name" data-gid="${group.id}" value="${escAttr(group.name)}" aria-label="Account name">
-      ${ownerSelect}
       <label class="ac-type-field">Type <select class="ac-type" data-gid="${group.id}" aria-label="Account type">${types}</select></label>
       <div class="ac-summary"><strong id="gtbal_${group.id}">—</strong><span id="gtcon_${group.id}"></span></div>
     </div>
     <div class="ac-body">
+      ${ownerField}
+      <p class="ac-split-hint">Split this account's balance across tax treatments — the rows must add up to the total.</p>
       <div class="sub-row"><span class="sub-head">Source</span><span class="sub-head">Balance</span><span class="sub-head">Annual contrib.</span><span></span></div>
       ${subs}
       ${flagsHTML ? `<div class="ac-flags">${flagsHTML}</div>` : ''}
@@ -2383,9 +2424,17 @@ function groupCardHTML(group, isCouple) {
 
 function renderAccounts() {
   const isCouple = $('household').value === 'couple';
-  $('accountsContainer').innerHTML = accountGroups.map((g) => groupCardHTML(g, isCouple)).join('');
-  accountGroups.forEach((g) => updateGroupComputed(g.id));
+  if (!isCouple) accountFilter = 'all';
+  const shown = accountGroups.filter((g) => accountFilter === 'all' || g.owner === accountFilter);
+  $('accountsContainer').innerHTML = shown.map((g) => groupCardHTML(g, isCouple)).join('')
+    || (accountGroups.length ? `<p class="accounts-hint">No ${accountFilter === 'all' ? '' : OWNER_LABEL[accountFilter] + ' '}accounts yet.</p>` : '');
+  accountGroups.forEach((g) => updateGroupComputed(g.id)); // no-ops for hidden cards
   updateAccountsTotal();
+  // Owner controls (Add-for selector, filter) are only meaningful for couples.
+  if ($('addForWrap')) $('addForWrap').classList.toggle('hidden', !isCouple);
+  if ($('acctFilter')) $('acctFilter').classList.toggle('hidden', !isCouple || accountGroups.length === 0);
+  if ($('addForOwner') && document.activeElement !== $('addForOwner')) $('addForOwner').value = lastEditedOwner;
+  document.querySelectorAll('#acctFilter .filter-chip').forEach((c) => c.classList.toggle('active', c.dataset.filter === accountFilter));
 }
 
 // Update a card's totals/composition/warnings in place (no re-render → keeps focus).
@@ -2397,9 +2446,9 @@ function updateGroupComputed(gid) {
   const balEl = $(`gtbal_${gid}`); if (balEl) balEl.textContent = fmt$k(bal);
   const conEl = $(`gtcon_${gid}`); if (conEl) conEl.textContent = con ? ` · ${fmt$(con)}/yr` : '';
 
-  // Composition by treatment (share of balance).
+  // Composition by treatment (share of balance). Skip unselected splits.
   const comp = { pretax: 0, roth: 0, aftertax: 0, taxable: 0 };
-  group.subAccounts.forEach((s) => { comp[s.taxTreatment] += s.balance || 0; });
+  group.subAccounts.forEach((s) => { if (comp[s.taxTreatment] != null) comp[s.taxTreatment] += s.balance || 0; });
   const compEl = $(`gtcomp_${gid}`);
   if (compEl) {
     const segs = TT_OPTIONS.filter(([v]) => comp[v] > 0).map(([v, l]) =>
@@ -2408,11 +2457,20 @@ function updateGroupComputed(gid) {
   }
 
   // Validation against the OWNER's per-person limits (couples have two sets).
+  // A Joint HSA is a family HSA, so it checks against the family limit.
   const ownerAge = group.owner === 'partner' ? num('ageB') : num('ageA');
-  const v = validateGroupYear(group, CURRENT_YEAR, { age: ownerAge, coverage: 'self' });
+  const v = validateGroupYear(group, CURRENT_YEAR, { age: ownerAge, coverage: hsaCoverageFor(group) });
+  const warnings = v.warnings.slice();
+  // Duplicate-source guard: two splits on the same treatment double-count.
+  const seen = {}, dupes = new Set();
+  group.subAccounts.forEach((s) => { if (s.category) { if (seen[s.category]) dupes.add(s.category); seen[s.category] = true; } });
+  if (dupes.size) {
+    const labels = [...dupes].map((c) => (SUBACCOUNT_CATEGORIES[c] ? SUBACCOUNT_CATEGORIES[c].label : c));
+    warnings.push(`Two rows use the same source (${labels.join(', ')}) — merge them so the split isn't double-counted.`);
+  }
   const warnEl = $(`gtwarn_${gid}`);
   if (warnEl) {
-    if (v.warnings.length) { warnEl.innerHTML = v.warnings.join('<br>'); warnEl.classList.remove('hidden'); }
+    if (warnings.length) { warnEl.innerHTML = warnings.join('<br>'); warnEl.classList.remove('hidden'); }
     else warnEl.classList.add('hidden');
   }
   const hintEl = $(`gthint_${gid}`);
@@ -2423,10 +2481,22 @@ function updateGroupComputed(gid) {
 }
 
 function updateAccountsTotal() {
-  const t = accountsTotals();
-  $('accountsTotal').innerHTML =
-    `<span>${accountGroups.length} account${accountGroups.length === 1 ? '' : 's'} · ${fmt$(t.contribution)}/yr contributions</span>` +
-    `<strong>${fmt$(t.balance)} total</strong>`;
+  const isCouple = $('household').value === 'couple';
+  const per = { you: { bal: 0, con: 0 }, partner: { bal: 0, con: 0 }, joint: { bal: 0, con: 0 } };
+  let totBal = 0, totCon = 0;
+  accountGroups.forEach((g) => {
+    const b = groupBalance(g), c = groupContribution(g, CURRENT_YEAR);
+    totBal += b; totCon += c;
+    const o = per[g.owner] ? g.owner : 'you';
+    per[o].bal += b; per[o].con += c;
+  });
+  // Per-person subtotal rows (couples only) above the household total.
+  const rows = isCouple
+    ? ['you', 'partner', 'joint'].filter((o) => per[o].bal > 0 || per[o].con > 0).map((o) =>
+        `<div class="acct-subtotal"><span class="owner-badge owner-${o}">${OWNER_BADGE[o]}</span><span class="st-label">${OWNER_LABEL[o]}</span><span class="st-vals">${fmt$(per[o].bal)} · ${fmt$(per[o].con)}/yr</span></div>`).join('')
+    : '';
+  $('accountsTotal').innerHTML = rows +
+    `<div class="acct-household"><span>${accountGroups.length} account${accountGroups.length === 1 ? '' : 's'} · ${fmt$(totCon)}/yr contributions</span><strong>${fmt$(totBal)} total</strong></div>`;
 }
 
 // Called after any account edit: sync derived fields, re-forecast, persist.
@@ -2438,18 +2508,27 @@ function onAccountsChanged() {
   saveState();
 }
 
+// New accounts start on a NEUTRAL tax treatment — never a silent Roth default.
+// "total" = Total (no split); brokerage's only neutral is taxable.
 const ADD_ACCT_DEFAULTS = {
-  '401k': { name: '401(k)', category: 'pretax' },
-  '403b': { name: '403(b)', category: 'pretax' },
-  '457b': { name: '457(b)', category: 'pretax' },
-  'tsp': { name: 'TSP', category: 'pretax' },
-  'ira': { name: 'IRA', category: 'roth' },        // defaults to a Roth IRA source
-  'hsa': { name: 'HSA', category: 'pretax' },
+  '401k': { name: '401(k)', category: 'total' },
+  '403b': { name: '403(b)', category: 'total' },
+  '457b': { name: '457(b)', category: 'total' },
+  'tsp': { name: 'TSP', category: 'total' },
+  'ira': { name: 'IRA', category: 'total' },
+  'hsa': { name: 'HSA', category: 'total' },
   'brokerage': { name: 'Brokerage', category: 'taxable' },
 };
 function addGroup(type = 'brokerage') {
   const d = ADD_ACCT_DEFAULTS[type] || ADD_ACCT_DEFAULTS.brokerage;
-  accountGroups.push(makeGroup({ name: d.name, type, subAccounts: [makeSubAccount({ category: d.category })] }));
+  // Owner intent: the "Add for:" selector if present, else inherit the last
+  // added/edited account's owner. Coerce Joint to You for types that can't be
+  // jointly owned.
+  let owner = ($('addForOwner') && $('household').value === 'couple') ? $('addForOwner').value : 'you';
+  if (owner === 'joint' && !jointAllowed(type)) owner = lastEditedOwner === 'joint' ? 'you' : lastEditedOwner;
+  const name = ownerSuffixedName(d.name, owner);
+  accountGroups.push(makeGroup({ name, type, owner, subAccounts: [makeSubAccount({ category: d.category })] }));
+  lastEditedOwner = owner;
   renderAccounts();
   onAccountsChanged();
 }
@@ -2460,7 +2539,14 @@ function removeGroup(gid) {
 }
 function addSub(gid) {
   const g = findGroup(gid);
-  if (g) g.subAccounts.push(makeSubAccount({ taxTreatment: 'pretax' }));
+  if (g) {
+    // Start an added split UNSELECTED with zeroed amounts, so it's never a
+    // silent copy of the first row (an easy double-count).
+    const s = makeSubAccount({ category: 'total' });
+    s.category = ''; s.taxTreatment = ''; s.source = ''; s.deferral = false; s.addition = false;
+    s.balance = 0; s.baseContribution = 0;
+    g.subAccounts.push(s);
+  }
   renderAccounts();
   onAccountsChanged();
 }
@@ -2488,19 +2574,30 @@ function wireAccounts() {
     const t = e.target;
     const g = findGroup(t.dataset.gid);
     if (!g) return;
-    if (t.classList.contains('ac-type')) { g.type = t.value; renderAccounts(); onAccountsChanged(); } // re-render: source options + flags depend on type
-    else if (t.classList.contains('ac-owner')) { g.owner = t.value; updateGroupComputed(g.id); onAccountsChanged(); }
+    if (t.classList.contains('ac-type')) {
+      g.type = t.value;
+      // Coerce Joint off types that can't be jointly owned.
+      if (g.owner === 'joint' && !jointAllowed(g.type)) g.owner = (lastEditedOwner !== 'joint' ? lastEditedOwner : 'you');
+      renderAccounts(); onAccountsChanged();
+    } // re-render: source options + flags depend on type
+    else if (t.classList.contains('ac-owner')) {
+      const oldOwner = g.owner; g.owner = t.value;
+      reSuggestAccountName(g, oldOwner);
+      lastEditedOwner = g.owner;
+      if ($('addForOwner')) $('addForOwner').value = g.owner;
+      renderAccounts(); onAccountsChanged(); // re-render: badge, name suffix, joint availability
+    }
     else if (t.classList.contains('ac-agency-match')) { g.agencyMatch = t.checked; updateGroupComputed(g.id); onAccountsChanged(); }
     else if (t.classList.contains('ac-penalty-free')) { g.penaltyFreeSeparation = t.checked; onAccountsChanged(); }
     else if (t.classList.contains('sub-cat')) {
       const s = findSub(g, t.dataset.sid);
-      if (s) {
-        const info = SUBACCOUNT_CATEGORIES[t.value];
+      const info = SUBACCOUNT_CATEGORIES[t.value];
+      if (s && info) {
         s.category = t.value;
         s.taxTreatment = info.treatment; s.source = info.source;
         s.deferral = info.deferral; s.addition = info.addition;
       }
-      updateGroupComputed(g.id); onAccountsChanged();
+      renderAccounts(); onAccountsChanged(); // re-render so the placeholder/dupe state refreshes
     }
     else return;
     e.stopPropagation();
@@ -4087,6 +4184,10 @@ function injectStepCta(panelId, ctas) {
 injectStepCta('tab-goal', [{ label: 'See when you’ll reach it →', target: 'forecast' }]);
 injectStepCta('tab-forecast', [{ label: 'Explore ways to reach it sooner →', target: 'scenario' }]);
 document.querySelectorAll('.add-acct').forEach((b) => b.addEventListener('click', () => addGroup(b.dataset.type)));
+// "Add for" selector declares the owner intent for new accounts.
+if ($('addForOwner')) $('addForOwner').addEventListener('change', () => { lastEditedOwner = $('addForOwner').value; });
+// Owner filter chips (All / Person A / Person B / Joint).
+document.querySelectorAll('#acctFilter .filter-chip').forEach((c) => c.addEventListener('click', () => { accountFilter = c.dataset.filter; renderAccounts(); }));
 $('addStreamBtn').addEventListener('click', addStream);
 $('addLumpBtn').addEventListener('click', addLump);
 // Maturity Month/Year dropdowns → keep the hidden #debtMaturity in sync. These run
