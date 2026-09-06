@@ -6,7 +6,7 @@
   <title>The FIRE Engine — Retirement Forecaster</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="apple-touch-icon" href="favicon.svg" />
-  <link rel="stylesheet" href="styles.css?v=82" />
+  <link rel="stylesheet" href="styles.css?v=83" />
 </head>
 <body>
   <header>
@@ -191,16 +191,22 @@
       <div class="panel">
         <h2>What-if levers</h2>
         <div class="slider-field">
-          <div class="slabel"><span>Return rate (base) <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">Timeline-only — only affects how fast THIS tab's balance grows (chart, runway, balance cards). the Your Target number doesn't depend on account balance at all, so this never reaches it.</span></span></span><span class="sval" id="returnVal">7.0%</span></div>
-          <input type="range" id="returnRate" min="2" max="12" step="0.1" value="7">
+          <div class="slabel"><span>Return rate (base) <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">Timeline-only — only affects how fast THIS tab's balance grows (chart, runway, balance cards). the Your Target number doesn't depend on account balance at all, so this never reaches it.</span></span></span><span class="sval-box"><input type="number" class="sval-input" id="returnBox" min="2" max="12" step="0.1" value="7" aria-label="Base return rate, percent"><span class="sval-unit">%</span></span></div>
+          <input type="range" id="returnRate" min="2" max="12" step="0.1" value="7" aria-label="Base return rate">
+          <div class="preset-chips" id="returnPresets" role="group" aria-label="Return rate presets">
+            <button type="button" class="preset-chip" data-return="5">5%</button>
+            <button type="button" class="preset-chip" data-return="6">6%</button>
+            <button type="button" class="preset-chip" data-return="7">7%</button>
+            <button type="button" class="preset-chip" data-return="8">8%</button>
+          </div>
         </div>
         <div class="slider-field">
-          <div class="slabel"><span>Withdrawal rate <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">Used by BOTH tabs — this is the literal divisor in every FIRE target (spend ÷ withdrawal rate), including Your Target's "Full FIRE"/"All-in FIRE" cards, even though Your Target has no Withdrawal rate field of its own.</span></span></span><span class="sval" id="wrVal">4.0%</span></div>
-          <input type="range" id="withdrawalRate" min="2" max="7" step="0.1" value="4">
+          <div class="slabel"><span>Withdrawal rate <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">Used by BOTH tabs — this is the literal divisor in every FIRE target (spend ÷ withdrawal rate), including Your Target's "Full FIRE"/"All-in FIRE" cards, even though Your Target has no Withdrawal rate field of its own.</span></span></span><span class="sval-box"><input type="number" class="sval-input" id="wrBox" min="2" max="7" step="0.1" value="4" aria-label="Withdrawal rate, percent"><span class="sval-unit">%</span></span></div>
+          <input type="range" id="withdrawalRate" min="2" max="7" step="0.1" value="4" aria-label="Withdrawal rate">
         </div>
         <div class="slider-field">
-          <div class="slabel"><span>Extra annual contribution (household) <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">Timeline-only — adds to this tab's account balance projection. Doesn't reach the Your Target number (balance-independent by design).</span></span></span><span class="sval" id="extraVal">$0</span></div>
-          <input type="range" id="extraContribution" min="0" max="60000" step="500" value="0">
+          <div class="slabel"><span>Extra annual contribution (household) <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">Timeline-only — adds to this tab's account balance projection. Doesn't reach the Your Target number (balance-independent by design).</span></span></span><span class="sval-box"><span class="sval-unit">$</span><input type="number" class="sval-input sval-input-wide" id="extraBox" min="0" max="60000" step="500" value="0" aria-label="Extra annual contribution, dollars"></span></div>
+          <input type="range" id="extraContribution" min="0" max="60000" step="500" value="0" aria-label="Extra annual contribution">
         </div>
         <!-- ageShift is kept only so the few remaining reads (buildInputs,
              renderStrategy) resolve to a constant 0. Nothing WRITES it anymore:
@@ -333,7 +339,7 @@
         <input type="range" id="goalWithdrawalRate" min="2" max="7" step="0.1" value="4" data-nostate>
       </div>
 
-      <h3 class="goal-sec" style="margin-bottom:6px">Annual spend</h3>
+      <div class="section-head"><h3 class="goal-sec" style="margin:0">Annual spend</h3><button type="button" class="section-reset" id="resetSpendSection">Reset section</button></div>
       <p class="col-connection-note" id="colConnectionNote"></p>
       <div class="spend-tier-pills" id="spendTierPills">
         <button type="button" class="tier-pill" data-tier="lean" data-base="45000">Lean $45k</button>
@@ -517,27 +523,27 @@
       <div class="lever-list" id="leverList">
         <div class="lever-row">
           <label class="lever-toggle"><input type="checkbox" id="lvRetOn" data-nostate><span>Retirement age</span></label>
-          <input type="number" id="scenarioRetirementAge" data-nostate min="18" max="90" step="1" placeholder="—" disabled>
+          <input type="number" id="scenarioRetirementAge" data-nostate min="18" max="90" step="1" placeholder="—" aria-label="Scenario retirement age" disabled>
         </div>
         <div class="lever-row">
           <label class="lever-toggle"><input type="checkbox" id="lvSpendOn" data-nostate><span>Annual retirement spending</span></label>
-          <input type="text" inputmode="decimal" id="lvSpend" data-nostate data-money placeholder="—" disabled>
+          <input type="text" inputmode="decimal" id="lvSpend" data-nostate data-money placeholder="—" aria-label="Scenario annual retirement spending" disabled>
         </div>
         <div class="lever-row">
           <label class="lever-toggle"><input type="checkbox" id="lvConOn" data-nostate><span>Annual contributions</span></label>
-          <input type="text" inputmode="decimal" id="lvCon" data-nostate data-money placeholder="—" disabled>
+          <input type="text" inputmode="decimal" id="lvCon" data-nostate data-money placeholder="—" aria-label="Scenario annual contributions" disabled>
         </div>
         <div class="lever-row">
           <label class="lever-toggle"><input type="checkbox" id="lvRetnOn" data-nostate><span>Base return %</span></label>
-          <input type="number" id="lvRetn" data-nostate min="0" max="15" step="0.1" placeholder="—" disabled>
+          <input type="number" id="lvRetn" data-nostate min="0" max="15" step="0.1" placeholder="—" aria-label="Scenario base return percent" disabled>
         </div>
         <div class="lever-row">
           <label class="lever-toggle"><input type="checkbox" id="lvInflOn" data-nostate><span>Inflation %</span></label>
-          <input type="number" id="lvInfl" data-nostate min="0" max="10" step="0.1" placeholder="—" disabled>
+          <input type="number" id="lvInfl" data-nostate min="0" max="10" step="0.1" placeholder="—" aria-label="Scenario inflation percent" disabled>
         </div>
         <div class="lever-row">
           <label class="lever-toggle"><input type="checkbox" id="lvWrOn" data-nostate><span>Withdrawal rate %</span></label>
-          <input type="number" id="lvWr" data-nostate min="2" max="6" step="0.1" placeholder="—" disabled>
+          <input type="number" id="lvWr" data-nostate min="2" max="6" step="0.1" placeholder="—" aria-label="Scenario withdrawal rate percent" disabled>
         </div>
       </div>
       <div class="lever-actions">
@@ -711,9 +717,9 @@
     </div>
   </div>
 
-  <script src="config.js?v=82"></script>
-  <script src="accounts.js?v=82"></script>
-  <script src="calc.js?v=82"></script>
-  <script src="app.js?v=82"></script>
+  <script src="config.js?v=83"></script>
+  <script src="accounts.js?v=83"></script>
+  <script src="calc.js?v=83"></script>
+  <script src="app.js?v=83"></script>
 </body>
 </html>
