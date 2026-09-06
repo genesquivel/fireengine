@@ -10,12 +10,15 @@ const fmt$ = (n) => {
 };
 const fmt$k = (n) => {
   if (!isFinite(n)) return '∞';
-  const abs = Math.abs(n);
-  if (abs >= 1e6) {
-    // Up to 3 decimals, trimming trailing zeros: 1.125M, 3.5M, 2M.
-    return '$' + parseFloat((n / 1e6).toFixed(3)) + 'M';
-  }
-  if (abs >= 1000) return '$' + (n / 1000).toFixed(0) + 'k';
+  const abs = Math.abs(n), sign = n < 0 ? '-' : '';
+  const trim = (v, dp) => parseFloat(v.toFixed(dp)); // strip trailing zeros
+  // Roll up through k / M / B / T so huge values stay legible (never
+  // $2500000002.456M). Millions keep finer precision (1.125M); billions and
+  // trillions round to two places.
+  if (abs >= 1e12) return `${sign}$${trim(abs / 1e12, 2)}T`;
+  if (abs >= 1e9) return `${sign}$${trim(abs / 1e9, 2)}B`;
+  if (abs >= 1e6) return `${sign}$${trim(abs / 1e6, 3)}M`;
+  if (abs >= 1000) return `${sign}$${(abs / 1000).toFixed(0)}k`;
   return fmt$(n);
 };
 // Compact, consistent currency for CHART AXES only: $0, $500K, $1.5M, $2M,
@@ -47,7 +50,76 @@ const niceAxis = (rawMax) => {
 const fmtYears = (n) => (isFinite(n) ? n.toFixed(0) : '∞');
 const fmtAge = (a) => (a == null ? '—' : a.toFixed(a % 1 ? 1 : 0));
 const fmtInput = (n) => Math.round(parseMoney(n)).toLocaleString('en-US');
-const moneyAttr = (n) => escAttr(fmtInput(n));
+const fmtMoney = (n) => '$' + fmtInput(n); // display value for money inputs ($18,000)
+const moneyAttr = (n) => escAttr(fmtMoney(n));
+
+// --- Money field: format-as-you-type + inline validation -------------------
+// Soft ceilings that trigger an "unusually high" warning (value still accepted).
+function moneySanityCeiling(input) {
+  const id = (input.id || '') + ' ' + (input.className || '');
+  if (/bal\b|balance|savings|totalsavings/i.test(id)) return 100e6; // balances
+  if (/spend|desired|income|contrib|\bcon\b|save|amt|amount|cost|cat_|phase/i.test(id)) return 1e6; // annual flows
+  return null;
+}
+// Show an error and keep it visible briefly, even as the user keeps typing, so a
+// rejected character (letter, minus) is clearly reported rather than silently
+// swallowed. The timer auto-clears once the value is valid again.
+function flashFieldError(input, msg) {
+  setFieldMsg(input, msg, 'error');
+  if (input._msgTimer) clearTimeout(input._msgTimer);
+  input._msgTimer = setTimeout(() => { input._msgTimer = null; setFieldMsg(input, '', null); }, 2500);
+}
+// Insert / update / clear the inline message directly beneath a field.
+function setFieldMsg(input, text, kind) {
+  const host = input.closest('.field, .wiz-field, .lever-row, .cat-field') || input.parentElement;
+  if (!host) return;
+  let el = host.querySelector(':scope > .field-msg');
+  if (!text) { if (el) el.remove(); input.removeAttribute('aria-invalid'); return; }
+  if (!el) { el = document.createElement('p'); el.className = 'field-msg'; host.appendChild(el); }
+  el.textContent = text;
+  el.className = 'field-msg ' + (kind === 'warn' ? 'field-msg-warn' : 'field-msg-error');
+  if (kind === 'error') input.setAttribute('aria-invalid', 'true'); else input.removeAttribute('aria-invalid');
+}
+// Reformat a text money input's value ("$18,000") while keeping the caret
+// stable, and validate: letters -> error (kept out of the value, last valid
+// preserved); a leading minus -> clamp to $0 with a message; huge -> soft
+// warning. Number-typed money inputs skip the $/comma formatting.
+function formatMoneyLive(input) {
+  if (input.type === 'number') { // native numeric field — validate only
+    const v = parseFloat(input.value);
+    if (input.value !== '' && v < 0) { input.value = 0; setFieldMsg(input, 'Enter $0 or more', 'error'); }
+    else { const c = moneySanityCeiling(input); setFieldMsg(input, (isFinite(v) && c && v > c) ? 'This looks unusually high — is that right?' : '', 'warn'); }
+    return;
+  }
+  const raw = input.value;
+  const caret = input.selectionStart == null ? raw.length : input.selectionStart;
+  const digitsBefore = (raw.slice(0, caret).replace(/[^\d]/g, '')).length;
+  const hadLetters = /[a-z]/i.test(raw);
+  const hadNegative = /-/.test(raw);
+  let cleaned = raw.replace(/[^\d.]/g, '');
+  const dot = cleaned.indexOf('.');
+  if (dot !== -1) cleaned = cleaned.slice(0, dot + 1) + cleaned.slice(dot + 1).replace(/\./g, '');
+  const numVal = (cleaned === '' || cleaned === '.') ? null : parseFloat(cleaned);
+  const ceil = moneySanityCeiling(input);
+  if (hadLetters) flashFieldError(input, 'Enter a number of $0 or more');
+  else if (hadNegative) flashFieldError(input, 'Enter $0 or more — negative amounts aren’t allowed');
+  else if (numVal != null && ceil && numVal > ceil) { if (input._msgTimer) { clearTimeout(input._msgTimer); input._msgTimer = null; } setFieldMsg(input, 'This looks unusually high — is that right?', 'warn'); }
+  else if (!input._msgTimer) setFieldMsg(input, '', null);
+  let display = '';
+  if (cleaned !== '') {
+    const [intPart, decPart = ''] = cleaned.split('.');
+    const intFmt = intPart === '' ? '0' : Number(intPart).toLocaleString('en-US');
+    display = '$' + intFmt + (cleaned.indexOf('.') !== -1 ? '.' + decPart : '');
+  }
+  input.value = display;
+  if (input.dataset) input.dataset.lastValid = display;
+  // Restore caret after the same number of digits it followed before.
+  let pos = display.length, seen = 0;
+  if (digitsBefore > 0) {
+    for (let i = 0; i < display.length; i++) { if (/\d/.test(display[i])) { seen++; if (seen >= digitsBefore) { pos = i + 1; break; } } }
+  } else { pos = display.length; }
+  try { input.setSelectionRange(pos, pos); } catch (e) { /* ignore */ }
+}
 
 // v2: global inflation display mode — 'nominal' (engine default) | 'today'.
 let inflMode = 'nominal';
@@ -109,8 +181,8 @@ function syncForecastHouseholdFromGoal() {
 function syncLeanFatFromGoal() {
   if (!$('lean') || !$('fat') || typeof colAdjustedCategories !== 'function') return;
   const sumCats = (cats) => Object.values(cats).reduce((s, v) => s + v, 0);
-  $('lean').value = fmtInput(sumCats(colAdjustedCategories(SPEND_TIER_BASE.lean)));
-  $('fat').value = fmtInput(sumCats(colAdjustedCategories(SPEND_TIER_BASE.fat)));
+  $('lean').value = fmtMoney(sumCats(colAdjustedCategories(SPEND_TIER_BASE.lean)));
+  $('fat').value = fmtMoney(sumCats(colAdjustedCategories(SPEND_TIER_BASE.fat)));
 }
 
 // Forecast's "Pre-65 health insurance" is now a read-only mirror of Goal
@@ -130,7 +202,7 @@ function syncDesiredFromGoal() {
   if (!field || document.activeElement === field) return;
   const phases = goalPhases();
   if (!phases.length) return; // nothing mapped yet — leave the field as-is
-  field.value = fmtInput(blendedDesiredIncome(phases));
+  field.value = fmtMoney(blendedDesiredIncome(phases));
 }
 
 function buildInputs() {
@@ -499,8 +571,7 @@ function renderSpendCategories() {
         ${auto ? '<span class="suggested-chip">✨ Suggested</span>' : ''}
       </div>
       <div class="cat-input-row">
-        <input type="text" inputmode="decimal" id="cat_${k}" data-cat="${k}" value="${fmtInput(v)}" aria-describedby="cat_${k}_help">
-        ${!auto ? `<button type="button" class="reset-inline reset-cat-btn" data-cat="${k}" title="Reset to ${fmt$(resetTo)}" aria-label="Reset ${SPEND_CATEGORY_LABELS[k]} to ${fmt$(resetTo)}">↺</button>` : ''}
+        <input type="text" inputmode="decimal" id="cat_${k}" data-cat="${k}" data-money value="${fmtMoney(v)}" aria-describedby="cat_${k}_help">
         <span class="info-tip" id="cat_${k}_help" tabindex="0">ⓘ<span class="info-tip-bubble">${escAttr(sourceTitle)}</span></span>
       </div>
     </div>`;
@@ -909,8 +980,9 @@ function applyGoalDesiredInput({ format = false } = {}) {
 
 function formatMoneyInput(input) {
   if (!input || !input.matches || !input.matches('input[data-money]')) return;
+  if (input.type === 'number') return; // native numeric field can't hold $/commas
   if (document.activeElement === input) return;
-  input.value = fmtInput(input.value);
+  input.value = input.value.trim() === '' ? '' : fmtMoney(input.value);
 }
 
 function formatMoneyInputs(root = document) {
@@ -2068,9 +2140,25 @@ function renderHustle() {
   $('hustleBody').innerHTML = headline + cards + earlyNote;
 }
 
+// Push a slider's rounded value into its paired number box and its
+// aria-valuetext (so screen readers read "7.2%", never "7.199999809265137").
+function syncSliderBox(sliderId, boxId, dp, unit) {
+  const s = $(sliderId); if (!s) return;
+  const v = num(sliderId);
+  const rounded = v.toFixed(dp);
+  s.setAttribute('aria-valuetext', unit === '$' ? fmtMoney(v) : rounded + unit);
+  const box = $(boxId);
+  if (box && document.activeElement !== box) box.value = rounded;
+}
 function updateSliderLabels() {
-  $('returnVal').textContent = num('returnRate').toFixed(1) + '%';
-  $('wrVal').textContent = num('withdrawalRate').toFixed(1) + '%';
+  syncSliderBox('returnRate', 'returnBox', 1, '%');
+  syncSliderBox('withdrawalRate', 'wrBox', 1, '%');
+  syncSliderBox('extraContribution', 'extraBox', 0, '$');
+  document.querySelectorAll('#returnPresets .preset-chip').forEach((c) => {
+    const on = Math.abs(num('returnRate') - (+c.dataset.return)) < 0.05;
+    c.classList.toggle('active', on);
+    c.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
   // Goal Builder's withdrawal-rate slider is a second window onto the SAME
   // value as Forecast's #withdrawalRate (not a separate synced-from-Goal-
   // Builder field) — both directly editable, kept in lockstep via this plus
@@ -2081,7 +2169,6 @@ function updateSliderLabels() {
     $('goalWithdrawalRate').value = num('withdrawalRate');
     $('goalWrVal').textContent = num('withdrawalRate').toFixed(1) + '%';
   }
-  $('extraVal').textContent = fmt$(num('extraContribution'));
   // ageShift has no visible Forecast slider anymore (removed — Scenario
   // Playground's "Retirement age" field is the only thing that still sets
   // it, as its internal override mechanism), so no label to update here.
@@ -3141,7 +3228,7 @@ function onLeverToggle(cb, inp) {
   if (on) {
     if (el.value === '' || el.value == null) {
       const v = leverBaseValue(inp, buildInputs());
-      el.value = el.hasAttribute('data-money') ? fmtInput(v) : v;
+      el.value = el.hasAttribute('data-money') ? fmtMoney(v) : v;
     }
     if (inp === 'scenarioRetirementAge') applyScenarioRetirementAge();
   } else {
@@ -3777,7 +3864,7 @@ function hydrateFromScenarioParams() {
     const lever = (cb, inp, key, money) => {
       const v = n(key); if (v == null) return;
       if ($(cb)) $(cb).checked = true;
-      if ($(inp)) { $(inp).disabled = false; $(inp).value = money ? fmtInput(Math.round(v)) : v; }
+      if ($(inp)) { $(inp).disabled = false; $(inp).value = money ? fmtMoney(Math.round(v)) : v; }
     };
     lever('lvRetOn', 'scenarioRetirementAge', 'lret', false);
     lever('lvSpendOn', 'lvSpend', 'lspend', true);
@@ -4131,11 +4218,46 @@ if ($('resetLeversBtn')) $('resetLeversBtn').addEventListener('click', () => {
 // On load, engage the retirement-age lever if a saved override exists.
 if ($('lvRetOn') && scenarioRetirementAge != null) { $('lvRetOn').checked = true; if ($('scenarioRetirementAge')) $('scenarioRetirementAge').disabled = false; }
 
+// Slider ↔ number box: typing in a box drives its paired slider (capture phase
+// so the slider is set before the global recompute reads it); blur snaps the
+// box to the clamped, rounded value.
+[['returnBox', 'returnRate'], ['wrBox', 'withdrawalRate'], ['extraBox', 'extraContribution']].forEach(([box, slider]) => {
+  if (!$(box) || !$(slider)) return;
+  $(box).addEventListener('input', () => {
+    const s = $(slider), v = parseFloat($(box).value);
+    if (isFinite(v)) s.value = Math.min(+s.max, Math.max(+s.min, v));
+  }, true);
+  $(box).addEventListener('blur', () => updateSliderLabels());
+});
+document.querySelectorAll('#returnPresets .preset-chip').forEach((c) => c.addEventListener('click', () => {
+  if ($('returnRate')) { $('returnRate').value = c.dataset.return; recompute(); refreshActiveTab(); saveState(); }
+}));
+// One quiet "Reset section" control for the spend group (replaces the per-row
+// reset icons that overlapped the inputs).
+if ($('resetSpendSection')) $('resetSpendSection').addEventListener('click', () => { resetSpendCategoriesToBase(); recompute(); refreshActiveTab(); saveState(); });
+// ZIP validation on blur — exactly 5 digits, else error and never carry it in.
+if ($('goalZip')) $('goalZip').addEventListener('blur', () => {
+  const el = $('goalZip'), z = el.value.replace(/\D/g, '');
+  if (el.value.trim() === '') { setFieldMsg(el, '', null); return; }
+  if (z.length !== 5) { setFieldMsg(el, 'Enter a 5-digit ZIP code', 'error'); el.value = ''; refreshLocation(); recompute(); refreshActiveTab(); saveState(); }
+  else { setFieldMsg(el, '', null); }
+});
+
+// Format money fields as you type (commas + $ prefix, stable caret) and show
+// inline validation. Capture phase so it runs before the recompute handler,
+// which reads the numeric value back out via num()/parseMoney().
+document.addEventListener('input', (e) => {
+  const t = e.target;
+  if (t && t.matches && t.matches('input[data-money], #onboarding-wizard input[inputmode="decimal"]')) {
+    formatMoneyLive(t);
+  }
+}, true);
+
 // v2: money formatter — accept commas while preserving numeric calculations.
 document.addEventListener('blur', (e) => {
   const t = e.target;
   if (t && t.matches && t.matches('input[data-money]')) {
-    formatMoneyInput(t);
+    formatMoneyLive(t);
     recompute(); refreshActiveTab(); saveState();
   }
 }, true);
@@ -4157,7 +4279,7 @@ const wiz = { step: 1, household: 'single', spendTier: 'base', keepAccounts: fal
 function wizSanitize(v) { return String(v == null ? '' : v).replace(/[$,\s]/g, ''); }
 function wizFormatMoneyFields() {
   document.querySelectorAll('#onboarding-wizard input[inputmode="decimal"]')
-    .forEach((t) => { if (t.value.trim() !== '') t.value = fmtInput(t.value); });
+    .forEach((t) => { if (t.value.trim() !== '') t.value = fmtMoney(t.value); });
 }
 function wizRawNum(id) {
   if (!$(id)) return null;
@@ -4182,7 +4304,7 @@ function wizSetSpendTier(tier) {
     .forEach((b) => { const on = b.dataset.tier === tier; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
   if ($('wizSpend') && typeof colAdjustedCategories === 'function' && typeof SPEND_TIER_BASE !== 'undefined' && SPEND_TIER_BASE[tier] != null) {
     const total = Math.round(Object.values(colAdjustedCategories(SPEND_TIER_BASE[tier])).reduce((s, v) => s + v, 0));
-    $('wizSpend').value = fmtInput(total);
+    $('wizSpend').value = fmtMoney(total);
   }
   wizValidateLive();
 }
@@ -4211,6 +4333,10 @@ function wizValidateStep(step) {
       if (ageB != null && retB != null && retB < ageB) return mark(['wizRetB'], "Partner's retirement age must be greater than their current age.");
     }
     if (bad.length) return mark(bad, 'Enter valid ages between 18 and 90.');
+  }
+  if (step === 3 && $('wizZip')) {
+    const z = $('wizZip').value.replace(/\D/g, '');
+    if ($('wizZip').value.trim() !== '' && z.length !== 5) return mark(['wizZip'], 'Enter a 5-digit ZIP code, or skip this step.');
   }
   if (step === 4) {
     const sp = wizRawNum('wizSpend');
@@ -4381,7 +4507,7 @@ if ($('rerunCancelBtn')) $('rerunCancelBtn').addEventListener('click', closeReru
 $('onboarding-wizard').addEventListener('input', (e) => { wizValidateLive(); e.stopPropagation(); });
 $('onboarding-wizard').addEventListener('focusout', (e) => {
   const t = e.target;
-  if (t && t.matches && t.matches('input[inputmode="decimal"]') && t.value.trim() !== '') t.value = fmtInput(t.value);
+  if (t && t.matches && t.matches('input[inputmode="decimal"]') && t.value.trim() !== '') t.value = fmtMoney(t.value);
 });
 $('onboarding-wizard').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && wiz.step >= 2 && wiz.step <= WIZ_LAST) { e.preventDefault(); wizNext(); }
