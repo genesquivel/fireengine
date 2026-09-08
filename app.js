@@ -175,7 +175,7 @@ function syncForecastHouseholdFromGoal() {
   toggleCouple();
 }
 
-// Lean/Fat FIRE spend mirror Goal Builder's Lean ($45k) / Fat ($120k) tier
+// Lean/Fat FIRE spend mirror Goal Builder's Lean ($55k) / Fat ($150k) tier
 // pills, COL-adjusted for the master ZIP — same read-only-mirror pattern as
 // household/age/SS above, so editing them only happens in one place.
 function syncLeanFatFromGoal() {
@@ -460,10 +460,11 @@ function refreshLocation() {
 }
 
 // --- v2.6: spend-tier presets + COL-adjusted category budgets ----------
-const SPEND_TIER_BASE = { lean: 45000, base: 65000, comfort: 85000, fat: 120000 };
-// Base-tier ($65k) category split. Other tiers scale proportionally; healthcare
-// stays flat across tiers (it's driven by ACA/Medicare modeling, not lifestyle).
-const SPEND_BASE_CATEGORIES = { housing: 18000, food: 8500, transportation: 9750, healthcare: 8500, travel: 6000, other: 14250 };
+const SPEND_TIER_BASE = { lean: 55000, base: 80000, comfort: 105000, fat: 150000 };
+// Base-tier ($80k ≈ US median household income) category split. Other tiers
+// scale proportionally; healthcare stays flat across tiers (it's driven by
+// ACA/Medicare modeling, not lifestyle).
+const SPEND_BASE_CATEGORIES = { housing: 22000, food: 10500, transportation: 12000, healthcare: 10500, travel: 7500, other: 17500 };
 const SPEND_CATEGORY_LABELS = { housing: 'Housing', food: 'Food', transportation: 'Transportation', healthcare: 'Healthcare', travel: 'Travel', other: 'Other' };
 // Natural-language noun phrase for sentences like "a typical ___" — most
 // categories read fine lowercased ("a typical housing budget"), but "Other"

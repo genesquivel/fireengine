@@ -793,8 +793,10 @@ body.wiz-open { overflow: hidden; }
 .wiz-help.wiz-zip-ok { color: var(--good); font-style: normal; font-weight: 600; }
 .wiz-help.wiz-zip-bad { color: var(--warn); font-style: normal; }
 
-/* Compact modal (re-run confirm) */
-.wizard-modal-sm { max-width: 420px; }
+/* Compact modal (re-run confirm) — content sits directly in the modal
+   (no .wizard-body), so give it its own balanced padding. */
+.wizard-modal-sm { max-width: 420px; padding: 28px 28px 24px; }
+.wizard-modal-sm .wiz-welcome-actions { margin-top: 16px; margin-bottom: 0; }
 
 /* Error banner */
 .wizard-error {

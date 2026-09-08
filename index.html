@@ -6,7 +6,7 @@
   <title>The FIRE Engine — Retirement Forecaster</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="apple-touch-icon" href="favicon.svg" />
-  <link rel="stylesheet" href="styles.css?v=84" />
+  <link rel="stylesheet" href="styles.css?v=85" />
 </head>
 <body>
   <header>
@@ -109,7 +109,7 @@
       <div class="person" id="personA">
         <h3>Person A</h3>
         <div class="row">
-          <div class="field"><label>Current age</label><input type="number" id="ageA" value="35" min="18" max="90" readonly class="synced-field"></div>
+          <div class="field"><label>Current age</label><input type="number" id="ageA" value="38" min="18" max="90" readonly class="synced-field"></div>
           <div class="field"><label>Retire at</label><input type="number" id="retA" value="65" min="40" max="90" readonly class="synced-field"></div>
         </div>
         <div class="field"><label>Social Security at retirement ($/yr)</label><input type="text" inputmode="decimal" id="ssA" value="24,000" min="0" step="500" data-money readonly class="synced-field"></div>
@@ -118,7 +118,7 @@
       <div class="person hidden" id="personB">
         <h3>Person B</h3>
         <div class="row">
-          <div class="field"><label>Current age</label><input type="number" id="ageB" value="36" min="18" max="90" readonly class="synced-field"></div>
+          <div class="field"><label>Current age</label><input type="number" id="ageB" value="39" min="18" max="90" readonly class="synced-field"></div>
           <div class="field"><label>Retire at</label><input type="number" id="retB" value="65" min="40" max="90" readonly class="synced-field"></div>
         </div>
         <div class="field"><label>Social Security at retirement ($/yr)</label><input type="text" inputmode="decimal" id="ssB" value="22,000" min="0" step="500" data-money readonly class="synced-field"></div>
@@ -160,7 +160,7 @@
       <input type="hidden" id="con" value="26400">
 
       <h2 style="margin-top:20px">Goals &amp; spending</h2>
-      <div class="field"><label>Annual retirement spending ($/yr in today's $) <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">Set in Your Target and used here automatically — the duration-weighted blend of the spending you mapped in Your Target. Drives the gap banner, FIRE milestones, and Full FIRE target.</span></span></label><input type="text" inputmode="decimal" id="desired" value="65,000" min="0" step="1000" data-money readonly class="synced-field"></div>
+      <div class="field"><label>Annual retirement spending ($/yr in today's $) <span class="info-tip" tabindex="0">ⓘ<span class="info-tip-bubble">Set in Your Target and used here automatically — the duration-weighted blend of the spending you mapped in Your Target. Drives the gap banner, FIRE milestones, and Full FIRE target.</span></span></label><input type="text" inputmode="decimal" id="desired" value="80,000" min="0" step="1000" data-money readonly class="synced-field"></div>
       <p class="synced-note" style="margin-bottom:6px">Set in <strong>Your Target</strong> — edits there flow here automatically. Lean/Fat spend come from its tier pills (COL-adjusted). <a href="#" class="edit-in-goal-link" data-jump-tab="goal">Edit in Your Target ↗</a></p>
       <div class="field"><label>Lean FIRE spend ($/yr)</label><input type="text" inputmode="decimal" id="lean" value="45,000" min="0" step="1000" data-money readonly class="synced-field"></div>
       <div class="field"><label>Fat FIRE spend ($/yr)</label><input type="text" inputmode="decimal" id="fat" value="140,000" min="0" step="1000" data-money readonly class="synced-field"></div>
@@ -333,19 +333,19 @@
       <div class="person" id="goalPersonA">
         <h3>Person A</h3>
         <div class="row">
-          <div class="field"><label>Current age</label><input type="number" id="goalAgeA" value="35" min="18" max="90"></div>
+          <div class="field"><label>Current age</label><input type="number" id="goalAgeA" value="38" min="18" max="90"></div>
           <div class="field"><label>Retire at</label><input type="number" id="goalRetA" value="65" min="40" max="90"></div>
         </div>
-        <div class="field"><label>SS at retirement $/yr <a href="https://ssa.tools/" target="_blank" rel="noopener" class="ss-est-link" title="Estimate your benefit at ssa.tools">(estimate)</a></label><input type="text" inputmode="decimal" id="goalSsA" value="24,000" min="0" step="500" data-money></div>
+        <div class="field"><label>SS at retirement $/yr <a href="https://ssa.tools/" target="_blank" rel="noopener" class="ss-est-link" title="Estimate your benefit at ssa.tools">(estimate)</a></label><input type="text" inputmode="decimal" id="goalSsA" value="23,000" min="0" step="500" data-money></div>
       </div>
 
       <div class="person hidden" id="goalPersonB">
         <h3>Person B</h3>
         <div class="row">
-          <div class="field"><label>Current age</label><input type="number" id="goalAgeB" value="36" min="18" max="90"></div>
+          <div class="field"><label>Current age</label><input type="number" id="goalAgeB" value="39" min="18" max="90"></div>
           <div class="field"><label>Retire at</label><input type="number" id="goalRetB" value="65" min="40" max="90"></div>
         </div>
-        <div class="field"><label>SS at retirement $/yr <a href="https://ssa.tools/" target="_blank" rel="noopener" class="ss-est-link" title="Estimate your benefit at ssa.tools">(estimate)</a></label><input type="text" inputmode="decimal" id="goalSsB" value="22,000" min="0" step="500" data-money></div>
+        <div class="field"><label>SS at retirement $/yr <a href="https://ssa.tools/" target="_blank" rel="noopener" class="ss-est-link" title="Estimate your benefit at ssa.tools">(estimate)</a></label><input type="text" inputmode="decimal" id="goalSsB" value="21,000" min="0" step="500" data-money></div>
       </div>
 
       <div class="slider-field">
@@ -356,9 +356,9 @@
       <div class="section-head"><h3 class="goal-sec" style="margin:0">Annual spend</h3><button type="button" class="section-reset" id="resetSpendSection">Reset section</button></div>
       <p class="col-connection-note" id="colConnectionNote"></p>
       <div class="spend-tier-pills" id="spendTierPills">
-        <button type="button" class="tier-pill" data-tier="lean" data-base="45000">Lean $45k</button>
-        <button type="button" class="tier-pill" data-tier="base" data-base="65000">Base $65k</button>
-        <button type="button" class="tier-pill" data-tier="fat" data-base="120000">Fat $120k</button>
+        <button type="button" class="tier-pill" data-tier="lean" data-base="55000">Lean $55k</button>
+        <button type="button" class="tier-pill" data-tier="base" data-base="80000">Base $80k</button>
+        <button type="button" class="tier-pill" data-tier="fat" data-base="150000">Fat $150k</button>
       </div>
       <p class="spend-tier-state" id="spendTierState"></p>
       <p class="csub" id="locationChangeBanner"></p>
@@ -633,21 +633,21 @@
           <div class="wiz-grid">
             <div class="wiz-field">
               <label for="wizAgeA">Your current age <span class="wiz-req">*</span></label>
-              <input type="text" inputmode="numeric" id="wizAgeA" data-nostate placeholder="35">
+              <input type="text" inputmode="numeric" id="wizAgeA" data-nostate placeholder="38">
               <p class="wiz-help">Use your age today.</p>
             </div>
             <div class="wiz-field">
               <label for="wizRetA">Desired retirement age <span class="wiz-req">*</span></label>
-              <input type="text" inputmode="numeric" id="wizRetA" data-nostate placeholder="50">
+              <input type="text" inputmode="numeric" id="wizRetA" data-nostate placeholder="65">
               <p class="wiz-help">This is your goal age, not a prediction.</p>
             </div>
             <div class="wiz-field wiz-couple-only hidden">
               <label for="wizAgeB">Partner&#39;s current age <span class="wiz-req">*</span></label>
-              <input type="text" inputmode="numeric" id="wizAgeB" data-nostate placeholder="36">
+              <input type="text" inputmode="numeric" id="wizAgeB" data-nostate placeholder="39">
             </div>
             <div class="wiz-field wiz-couple-only hidden">
               <label for="wizRetB">Partner&#39;s retirement age <span class="wiz-req">*</span></label>
-              <input type="text" inputmode="numeric" id="wizRetB" data-nostate placeholder="50">
+              <input type="text" inputmode="numeric" id="wizRetB" data-nostate placeholder="65">
             </div>
           </div>
         </section>
@@ -674,7 +674,7 @@
           </div>
           <div class="wiz-field">
             <label for="wizSpend">Annual retirement spending ($/yr) <span class="wiz-req">*</span></label>
-            <input type="text" inputmode="decimal" id="wizSpend" data-nostate placeholder="$65,000">
+            <input type="text" inputmode="decimal" id="wizSpend" data-nostate placeholder="$80,000">
             <p class="wiz-help">Pick a preset to start, then adjust the amount to match your plan.</p>
           </div>
         </section>
@@ -731,9 +731,9 @@
     </div>
   </div>
 
-  <script src="config.js?v=84"></script>
-  <script src="accounts.js?v=84"></script>
-  <script src="calc.js?v=84"></script>
-  <script src="app.js?v=84"></script>
+  <script src="config.js?v=85"></script>
+  <script src="accounts.js?v=85"></script>
+  <script src="calc.js?v=85"></script>
+  <script src="app.js?v=85"></script>
 </body>
 </html>
